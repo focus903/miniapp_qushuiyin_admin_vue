@@ -62,12 +62,7 @@ const ElCheckboxGroup = defineAsyncComponent(() =>
     import('element-plus/es/components/checkbox-group/style/css'),
   ]).then(([res]) => res.ElCheckboxGroup),
 );
-const ElDatePicker = defineAsyncComponent(() =>
-  Promise.all([
-    import('element-plus/es/components/date-picker/index'),
-    import('element-plus/es/components/date-picker/style/css'),
-  ]).then(([res]) => res.ElDatePicker),
-);
+const ElDatePicker = defineAsyncComponent(() => import('#/components/app-date-picker.vue'));
 const ElDivider = defineAsyncComponent(() =>
   Promise.all([
     import('element-plus/es/components/divider/index'),

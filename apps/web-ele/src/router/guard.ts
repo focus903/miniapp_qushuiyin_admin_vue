@@ -1,4 +1,5 @@
-import type { Router, RouteRecordRaw } from 'vue-router';
+import { allowedRoutes } from '#/utils/route-permissions';
+import type { Router } from 'vue-router';
 
 import { LOGIN_PATH } from '@vben/constants';
 import { preferences } from '@vben/preferences';
@@ -105,17 +106,12 @@ function setupAccessGuard(router: Router) {
     const userInfo = userStore.userInfo || (await authStore.fetchUserInfo());
     const userRoles = userInfo.roles ?? [];
 
-    function allowedRoutes(routes: RouteRecordRaw[]): RouteRecordRaw[] {
-      return routes.filter(route => !route.meta?.permission || accessStore.accessCodes.includes(String(route.meta.permission)))
-        .map(route => ({...route, ...(route.children ? {children: allowedRoutes(route.children)} : {})} as RouteRecordRaw))
-        .filter(route => !route.children || route.children.length > 0);
-    }
     // 生成菜单和路由
     const { accessibleMenus, accessibleRoutes } = await generateAccess({
       roles: userRoles,
       router,
       // 则会在菜单中显示，但是访问会被重定向到403
-      routes: allowedRoutes(accessRoutes),
+      routes: allowedRoutes(accessRoutes, accessStore.accessCodes),
     });
 
     // 保存菜单信息和路由信息

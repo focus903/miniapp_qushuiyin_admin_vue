@@ -3,9 +3,10 @@ import operations from './operations';
 import catalog from './catalog';
 import system from './system';
 const page = () => import('#/views/creatorhub/manage.vue');
-const config = (name:string,path:string,title:string,resource:string):RouteRecordRaw => ({name,path,component:page,meta:{title,permission:'config:read',resource}});
+const config = (name:string,path:string,title:string,resource:string):RouteRecordRaw => ({name,path,component:page,meta:{title,permission:`${resource}:read`,resource}});
 const routes: RouteRecordRaw[] = [
- ...operations.filter(route=>['CreatorHubDashboard','CreatorHubUsers'].includes(String(route.name))),
+ ...operations.filter(route=>route.name==='CreatorHubDashboard'),
+ {name:'UserManagement',path:'/user-management',meta:{title:'用户管理',icon:'lucide:users',order:1},children:operations.filter(route=>route.name==='CreatorHubUsers')},
  {name:'PointsManagement',path:'/points',meta:{title:'积分管理',icon:'lucide:coins',order:2},children:[
   config('Billing','/configuration/feature-billing','功能费用','feature-billing'),
   config('Rewards','/configuration/point-rewards','签到与奖励','point-rewards'),
