@@ -7,6 +7,7 @@ const config = (name:string,path:string,title:string,resource:string):RouteRecor
 const routes: RouteRecordRaw[] = [
  ...operations.filter(route=>route.name==='CreatorHubDashboard'),
  ...system.filter(route=>route.meta?.resource==='error-logs'),
+ ...system.filter(route=>route.meta?.resource==='worker-nodes'),
  {name:'UserManagement',path:'/user-management',meta:{title:'用户管理',icon:'lucide:users',order:1},children:operations.filter(route=>route.name==='CreatorHubUsers')},
  {name:'PointsManagement',path:'/points',meta:{title:'积分管理',icon:'lucide:coins',order:2},children:[
   config('Billing','/configuration/feature-billing','功能费用','feature-billing'),
@@ -23,7 +24,7 @@ const routes: RouteRecordRaw[] = [
  ...catalog,
  ...system.filter(route=>route.meta?.resource==='app-config'),
  {name:'SystemManagement',path:'/system',meta:{title:'系统管理',icon:'lucide:shield-check',order:10},children:[
-  ...system.filter(route=>!['app-config','error-logs'].includes(String(route.meta?.resource))),
+  ...system.filter(route=>!['app-config','error-logs','worker-nodes'].includes(String(route.meta?.resource))),
   {name:'AdminLogs',path:'/operation-logs',component:page,meta:{title:'操作日志',permission:'logs:read',resource:'logs'}},
  ]},
 ];

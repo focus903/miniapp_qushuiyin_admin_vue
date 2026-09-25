@@ -1,0 +1,143 @@
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue';
+import { Page } from '@vben/common-ui';
+import { ElAlert, ElButton, ElCard, ElDialog, ElInput, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus';
+import { requestClient } from '#/api/request';
+
+type State = 'online' | 'offline' | 'disabled';
+interface NodeEntry {
+  id: string; name: string; enabled: boolean; created: number; status: State; busy: boolean;
+  current_task: { id: string; kind: string; progress: number; started: number } | null;
+  server_time?: number;
+}
+interface Summary { total: number; online: number; offline: number; disabled: number }
+interface Listing { items: NodeEntry[]; total: number; summary: Summary; server_time: number }
+const rows = ref<NodeEntry[]>([]);
+const summary = ref<Summary>();
+const page = ref(1);
+const total = ref(0);
+const keyword = ref('');
+const status = ref<State | ''>('');
+const busy = ref(false);
+const error = ref('');
+const refreshed = ref(0);
+const dialog = ref(false);
+const selected = ref<NodeEntry>();
+const selectedId = ref('');
+const detailBusy = ref(false);
+const detailError = ref('');
+let generation = 0;
+let detailGeneration = 0;
+const labels: Record<State, string> = { online: '在线', offline: '离线', disabled: '已禁用' };
+const cards: { key: keyof Summary; label: string }[] = [
+  { key: 'total', label: '全部节点' }, { key: 'online', label: '在线节点' },
+  { key: 'offline', label: '离线节点' }, { key: 'disabled', label: '已禁用' },
+];
+const formattedTime = (value: number) => value ? new Date(value * 1000).toLocaleString() : '—';
+const taskName = (kind: string) => ({ 'audio.transcribe': '音视频转文字', 'demo.echo': '连接测试' })[kind] || kind;
+const tagType = (state: State) => state === 'online' ? 'success' : state === 'disabled' ? 'warning' : 'info';
+async function load() {
+  const current = ++generation; busy.value = true; error.value = '';
+  try {
+    const result = await requestClient.get<Listing>('/system/worker-nodes', { params: {
+      page: page.value, page_size: 20, keyword: keyword.value, status: status.value || undefined,
+    } });
+    if (current !== generation) return;
+    rows.value = result.items; total.value = result.total; summary.value = result.summary; refreshed.value = result.server_time;
+  } catch (cause) {
+    if (current !== generation) return;
+    error.value = cause instanceof Error ? cause.message : '读取节点状态失败，请检查服务连接与权限。';
+    rows.value = []; total.value = 0; summary.value = undefined; refreshed.value = 0;
+  } finally { if (current === generation) busy.value = false; }
+}
+function search() { page.value = 1; void load(); }
+function reset() { keyword.value = ''; status.value = ''; search(); }
+async function details(id: string) {
+  const current = ++detailGeneration;
+  selectedId.value = id; selected.value = undefined; detailError.value = ''; dialog.value = true; detailBusy.value = true;
+  try {
+    const result = await requestClient.get<NodeEntry>(`/system/worker-nodes/${encodeURIComponent(id)}`);
+    if (current === detailGeneration) selected.value = result;
+  } catch (cause) {
+    if (current === detailGeneration) detailError.value = cause instanceof Error ? cause.message : '节点详情读取失败';
+  } finally { if (current === detailGeneration) detailBusy.value = false; }
+}
+onMounted(load);
+onUnmounted(() => { generation++; detailGeneration++; });
+</script>
+
+<template>
+  <Page title="任务节点">
+    <ElAlert title="在线状态依据节点会话与心跳判断，异常断网可能延迟约60秒显示离线。刷新读取服务端最新状态，不会强制节点重连。" type="info" :closable="false" show-icon class="mb-4" />
+    <div class="node-summary">
+      <ElCard v-for="card in cards" :key="card.key" shadow="never" :class="`summary-${card.key}`">
+        <span>{{ card.label }}</span><strong>{{ summary?.[card.key] ?? '—' }}</strong>
+      </ElCard>
+    </div>
+    <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon class="mb-4" />
+    <ElCard>
+      <div class="node-filters">
+        <ElInput v-model="keyword" placeholder="搜索节点名称" aria-label="节点名称" clearable @keyup.enter="search" />
+        <ElSelect v-model="status" placeholder="全部状态" aria-label="连接状态" clearable @change="search">
+          <ElOption v-for="(label, value) in labels" :key="value" :label="label" :value="value" />
+        </ElSelect>
+        <ElButton type="primary" :loading="busy" @click="search">查询</ElButton>
+        <ElButton :disabled="busy" @click="reset">重置</ElButton>
+        <ElButton :loading="busy" @click="load">刷新状态</ElButton>
+        <span class="refresh-time">状态更新时间：{{ formattedTime(refreshed) }}</span>
+      </div>
+      <ElTable v-loading="busy" :data="rows" empty-text="暂无符合条件的任务节点">
+        <ElTableColumn prop="name" label="节点名称" min-width="160" show-overflow-tooltip />
+        <ElTableColumn prop="id" label="节点 ID" min-width="200" show-overflow-tooltip />
+        <ElTableColumn label="连接状态" width="110"><template #default="{ row }"><ElTag :type="tagType(row.status)">{{ labels[row.status as State] }}</ElTag></template></ElTableColumn>
+        <ElTableColumn label="处理状态" width="110"><template #default="{ row }">{{ row.busy ? '处理中' : row.status === 'online' ? '空闲' : '—' }}</template></ElTableColumn>
+        <ElTableColumn label="当前任务" min-width="150"><template #default="{ row }">{{ row.current_task ? taskName(row.current_task.kind) : '—' }}</template></ElTableColumn>
+        <ElTableColumn label="创建时间" width="180"><template #default="{ row }">{{ formattedTime(row.created) }}</template></ElTableColumn>
+        <ElTableColumn label="操作" width="80" fixed="right"><template #default="{ row }"><ElButton type="primary" link @click="details(row.id)">详情</ElButton></template></ElTableColumn>
+      </ElTable>
+      <ElPagination v-model:current-page="page" :total="total" :page-size="20" layout="total, prev, pager, next, jumper" class="mt-4" @current-change="load" />
+      <p class="node-note">顶部统计为全部节点数量，不随筛选条件变化。节点信息为上次刷新时的快照。</p>
+    </ElCard>
+    <ElDialog v-model="dialog" title="节点详情" width="min(680px, 94vw)">
+      <div v-loading="detailBusy" class="node-detail">
+        <ElAlert v-if="detailError" :title="detailError" type="error" :closable="false" />
+        <template v-if="selected">
+          <dl>
+            <dt>节点名称</dt><dd>{{ selected.name }}</dd>
+            <dt>节点 ID</dt><dd>{{ selected.id }}</dd>
+            <dt>连接状态</dt><dd><ElTag :type="tagType(selected.status)">{{ labels[selected.status] }}</ElTag></dd>
+            <dt>启用状态</dt><dd>{{ selected.enabled ? '已启用' : '已禁用' }}</dd>
+            <dt>处理状态</dt><dd>{{ selected.busy ? '处理中' : selected.status === 'online' ? '空闲' : '—' }}</dd>
+            <dt>创建时间</dt><dd>{{ formattedTime(selected.created) }}</dd>
+            <dt>状态更新时间</dt><dd>{{ formattedTime(selected.server_time || 0) }}</dd>
+            <template v-if="selected.current_task">
+              <dt>当前任务类型</dt><dd>{{ taskName(selected.current_task.kind) }}</dd>
+              <dt>当前任务 ID</dt><dd>{{ selected.current_task.id }}</dd>
+              <dt>任务开始时间</dt><dd>{{ formattedTime(selected.current_task.started) }}</dd>
+            </template>
+          </dl>
+        </template>
+      </div>
+      <template #footer><ElButton :loading="detailBusy" @click="details(selectedId)">刷新详情</ElButton><ElButton @click="dialog = false">关闭</ElButton></template>
+    </ElDialog>
+  </Page>
+</template>
+
+<style scoped>
+.node-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.node-summary strong { display: block; margin-top: 8px; font-size: 28px; }
+.summary-online strong { color: var(--el-color-success); }
+.summary-offline strong { color: var(--el-text-color-secondary); }
+.summary-disabled strong { color: var(--el-color-warning); }
+.node-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+.node-filters .el-input { width: 240px; }
+.node-filters .el-select { width: 150px; }
+.node-filters .el-button + .el-button { margin-left: 0; }
+.refresh-time, .node-note { color: var(--el-text-color-secondary); font-size: 12px; }
+.node-note { margin-top: 14px; }
+.node-detail { min-height: 120px; }
+.node-detail dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; }
+.node-detail dt { color: var(--el-text-color-secondary); }
+.node-detail dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .node-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>

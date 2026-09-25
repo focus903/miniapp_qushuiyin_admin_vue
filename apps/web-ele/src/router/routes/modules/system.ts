@@ -1,5 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router';
 const routes:RouteRecordRaw[]=[
+{path:'/creatorhub/worker-nodes',name:'CreatorHubWorkerNodes',component:()=>import('#/views/creatorhub/worker-nodes.vue'),meta:{title:'任务节点',resource:'worker-nodes',permission:'worker-nodes:read',icon:'lucide:network',order:0.75}},
 {path:'/creatorhub/error-logs',name:'CreatorHubErrorLogs',component:()=>import('#/views/creatorhub/error-logs.vue'),meta:{title:'错误日志',resource:'error-logs',permission:'error-logs:read',icon:'lucide:bug',order:0.5}},
 {path:'/creatorhub/image-diagnostics',name:'CreatorHubImageDiagnostics',component:()=>import('#/views/creatorhub/image-diagnostics.vue'),meta:{title:'图像处理检测',resource:'image-diagnostics',permission:'image-diagnostics:read',icon:'lucide:scan-eye'}},
 {path:'/creatorhub/database',name:'CreatorHubDatabase',component:()=>import('#/views/creatorhub/database.vue'),meta:{title:'数据库管理',resource:'database',permission:'database:read',icon:'lucide:database-backup'}},
