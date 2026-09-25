@@ -58,7 +58,7 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
   <AppConfigField v-for="field in group.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid" />
   </div>
   <div v-if="group.children.length" class="grid gap-4 md:grid-cols-2">
-   <ElCard v-for="child in group.children" :key="child.id" shadow="never" :header="child.label">
+   <ElCard v-for="child in group.children" :key="child.id" class="config-section" :data-config-group="child.code" shadow="never" :header="child.label">
     <div class="config-grid">
     <AppConfigField v-for="field in child.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid" />
     </div>
@@ -85,6 +85,27 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
 </template>
 
 <style scoped>
+.config-section[data-config-group='audio_to_text'] {
+  --heading-color: #1d4ed8;
+  --heading-background: rgb(59 130 246 / 8%);
+}
+.config-section[data-config-group='text_to_audio'] {
+  --heading-color: #047857;
+  --heading-background: rgb(16 185 129 / 8%);
+}
+.dark .config-section[data-config-group='audio_to_text'] {
+  --heading-color: #93c5fd;
+}
+.dark .config-section[data-config-group='text_to_audio'] {
+  --heading-color: #6ee7b7;
+}
+.config-section[data-config-group='audio_to_text'] :deep(.el-card__header),
+.config-section[data-config-group='text_to_audio'] :deep(.el-card__header) {
+  color: var(--heading-color);
+  font-weight: 600;
+  background: var(--heading-background);
+  border-inline-start: 4px solid var(--heading-color);
+}
 .config-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
