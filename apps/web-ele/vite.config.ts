@@ -15,10 +15,15 @@ export default defineConfig(async () => {
         host: '127.0.0.1',
         strictPort: true,
         proxy: {
+          '/ws/admin': {
+            target: 'http://127.0.0.1:8001',
+            changeOrigin: true,
+            ws: true,
+          },
           '/admin-api': {
             changeOrigin: true,
             // mock代理目标地址
-            target: 'http://127.0.0.1:8000',
+            target: 'http://127.0.0.1:8001',
             ws: true,
           },
         },

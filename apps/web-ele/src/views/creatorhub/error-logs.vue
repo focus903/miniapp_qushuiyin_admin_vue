@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useAccessStore } from '@vben/stores';
+import type { TableInstance } from 'element-plus';
 import { Page } from '@vben/common-ui';
-import { ElAlert, ElButton, ElCard, ElDatePicker, ElDialog, ElInput, ElInputNumber, ElMessage, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus';
+import { ElAlert, ElButton, ElCard, ElDatePicker, ElDialog, ElInput, ElInputNumber, ElMessage, ElMessageBox, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus';
 import { requestClient } from '#/api/request';
 
 interface ErrorEntry {
@@ -18,6 +20,12 @@ interface Health {
   directory: string; retentionDays: number; databaseFailures: number;
   fileFailures: number; queueDrops: number; fileOnly: number; pending: number;
 }
+const access = useAccessStore();
+const canDelete = computed(() => access.accessCodes.includes('error-logs:delete'));
+const table = ref<TableInstance>();
+const checkedIds = ref<string[]>([]);
+const deleting = ref(false);
+const detailId = ref('');
 const rows = ref<ErrorEntry[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -43,7 +51,34 @@ const stages: Record<string, string> = {
   parse_and_transcribe: '链接解析及音频转文字', transcript_record: '文案记录保存',
   parse_request: '解析请求', request_context_unavailable: '请求上下文采集失败',
 };
+function clearSelection() { checkedIds.value = []; table.value?.clearSelection(); }
+function selectionChanged(entries: ErrorEntry[]) { checkedIds.value = entries.map(entry => entry.id); }
+const canSelect = () => !busy.value && !deleting.value;
+watch([page, keyword, path, status, level, dates], clearSelection, { deep: true, flush: 'sync' });
+async function deleteLogs(values: string[]) {
+  if (!canDelete.value || deleting.value || busy.value) return;
+  const ids = [...new Set(values)];
+  if (!ids.length) return;
+  deleting.value = true;
+  try {
+    try {
+      await ElMessageBox.confirm(`确定删除选中的 ${ids.length} 条错误日志？数据库记录删除后无法恢复，本地日志文件仍按保留规则清理。`, '删除错误日志', {
+        type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消',
+      });
+    } catch { return; }
+    const result = ids.length === 1
+      ? await requestClient.delete<{ deleted: number; requested: number }>(`/system/error-logs/${ids[0]}`)
+      : await requestClient.post<{ deleted: number; requested: number }>('/system/error-logs/delete', { ids });
+    if (ids.includes(detailId.value)) { detailGeneration++; dialog.value = false; selected.value = undefined; detailBusy.value = false; }
+    clearSelection();
+    ElMessage.success(`已删除 ${result.deleted} 条日志`);
+    await load();
+  } catch (cause) {
+    ElMessage.error(cause instanceof Error ? cause.message : '删除失败，请稍后重试');
+  } finally { deleting.value = false; }
+}
 async function load() {
+  clearSelection();
   const current = ++generation;
   busy.value = true;
   error.value = '';
@@ -55,6 +90,8 @@ async function load() {
       end: dates.value?.[1] ? Math.floor(dates.value[1].getTime() / 1000) : undefined,
     }});
     if (current !== generation) return;
+    const lastPage = Math.max(1, Math.ceil(result.total / 20));
+    if (page.value > lastPage) { page.value = lastPage; await load(); return; }
     rows.value = result.items;
     total.value = result.total;
     health.value = result.health ?? undefined;
@@ -68,6 +105,7 @@ function search() { page.value = 1; load(); }
 function reset() { keyword.value = ''; path.value = ''; status.value = undefined; level.value = ''; dates.value = undefined; search(); }
 async function details(row: ErrorEntry) {
   const current = ++detailGeneration;
+  detailId.value = row.id;
   selected.value = undefined;
   dialog.value = true; detailBusy.value = true; detailError.value = '';
   try {
@@ -111,7 +149,12 @@ onMounted(load);
         <ElButton @click="reset">重置</ElButton>
         <ElButton :disabled="busy" @click="load">刷新</ElButton>
       </div>
-      <ElTable v-loading="busy" :data="rows" empty-text="暂无符合条件的错误日志">
+      <div v-if="canDelete" class="delete-toolbar">
+        <ElButton type="danger" :disabled="busy || deleting || !checkedIds.length" :loading="deleting" @click="deleteLogs(checkedIds)">批量删除</ElButton>
+        <span>已选择 {{ checkedIds.length }} 条</span>
+      </div>
+      <ElTable ref="table" v-loading="busy" :data="rows" row-key="id" empty-text="暂无符合条件的错误日志" @selection-change="selectionChanged">
+        <ElTableColumn v-if="canDelete" type="selection" width="48" :selectable="canSelect" />
         <ElTableColumn label="发生时间" width="180"><template #default="{row}">{{ formattedTime(row.created) }}</template></ElTableColumn>
         <ElTableColumn label="状态" width="90"><template #default="{row}"><ElTag :type="row.level === 'WARNING' ? 'warning' : 'danger'">{{ row.status }}</ElTag></template></ElTableColumn>
         <ElTableColumn label="级别" width="105"><template #default="{row}">{{ row.level || 'ERROR' }}</template></ElTableColumn>
@@ -123,7 +166,7 @@ onMounted(load);
           </template>
         </ElTableColumn>
         <ElTableColumn prop="exception_type" label="异常类型" width="160" show-overflow-tooltip />
-        <ElTableColumn label="操作" width="80" fixed="right"><template #default="{row}"><ElButton link type="primary" @click="details(row as ErrorEntry)">详情</ElButton></template></ElTableColumn>
+        <ElTableColumn label="操作" :width="canDelete ? 130 : 80" fixed="right"><template #default="{row}"><ElButton link type="primary" @click="details(row as ErrorEntry)">详情</ElButton><ElButton v-if="canDelete" link type="danger" :disabled="busy || deleting" @click="deleteLogs([row.id])">删除</ElButton></template></ElTableColumn>
       </ElTable>
       <ElPagination v-model:current-page="page" :total="total" :page-size="20" layout="total, prev, pager, next, jumper" class="mt-4" @current-change="load" />
       <p v-if="health" class="storage-hint">当前节点文件目录：{{ health.directory }} · 保留 {{ health.retentionDays }} 天 · 待入库 {{ health.pending }} 条 · 维护期间仅写文件 {{ health.fileOnly }} 条</p>
@@ -158,6 +201,7 @@ onMounted(load);
 </template>
 
 <style scoped>
+.delete-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
 .filters > :deep(.el-input) { width: 260px; }
 .filters > :deep(.el-select) { width: 190px; }

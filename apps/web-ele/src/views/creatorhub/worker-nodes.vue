@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue';
 import { Page } from '@vben/common-ui';
-import { ElAlert, ElButton, ElCard, ElDialog, ElInput, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus';
+import { ElAlert, ElButton, ElCard, ElDialog, ElInput, ElOption, ElPagination, ElProgress, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus';
 import { requestClient } from '#/api/request';
+import { adminRealtimeState, subscribeAdminEvents } from '#/services/admin-realtime';
 
 type State = 'online' | 'offline' | 'disabled';
 interface NodeEntry {
   id: string; name: string; enabled: boolean; created: number; status: State; busy: boolean;
   current_task: { id: string; kind: string; progress: number; started: number } | null;
+  current_tasks?: NonNullable<NodeEntry["current_task"]>[];
   server_time?: number;
 }
 interface Summary { total: number; online: number; offline: number; disabled: number }
@@ -34,7 +36,8 @@ const cards: { key: keyof Summary; label: string }[] = [
   { key: 'offline', label: '离线节点' }, { key: 'disabled', label: '已禁用' },
 ];
 const formattedTime = (value: number) => value ? new Date(value * 1000).toLocaleString() : '—';
-const taskName = (kind: string) => ({ 'audio.transcribe': '音视频转文字', 'demo.echo': '连接测试' })[kind] || kind;
+const taskName = (kind: string) => ({ 'audio.transcribe': '音视频转文字', 'demo.echo': '连接测试', 'image.watermark': '图片去水印', 'video.watermark': '视频去水印', 'video.subtitle': '视频去字幕' })[kind] || kind;
+const currentTasks = (node: NodeEntry) => node.current_tasks ?? (node.current_task ? [node.current_task] : []);
 const tagType = (state: State) => state === 'online' ? 'success' : state === 'disabled' ? 'warning' : 'info';
 async function load() {
   const current = ++generation; busy.value = true; error.value = '';
@@ -62,13 +65,28 @@ async function details(id: string) {
     if (current === detailGeneration) detailError.value = cause instanceof Error ? cause.message : '节点详情读取失败';
   } finally { if (current === detailGeneration) detailBusy.value = false; }
 }
+let active = true;
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+const unsubscribe = subscribeAdminEvents((event) => {
+  if (!active || !['ready', 'worker_nodes.changed'].includes(event)) return;
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    if (!active) return;
+    void load();
+    if (dialog.value && selectedId.value) void details(selectedId.value);
+  }, 200);
+});
 onMounted(load);
+onActivated(() => { if (!active) { active = true; void load(); } });
+onDeactivated(() => { active = false; clearTimeout(refreshTimer); });
+onUnmounted(() => { active = false; unsubscribe(); clearTimeout(refreshTimer); });
+const connectionLabels = { disconnected: '实时通知未连接', connecting: '实时通知连接中', connected: '实时通知已连接', reconnecting: '实时通知重连中' };
 onUnmounted(() => { generation++; detailGeneration++; });
 </script>
 
 <template>
   <Page title="任务节点">
-    <ElAlert title="在线状态依据节点会话与心跳判断，异常断网可能延迟约60秒显示离线。刷新读取服务端最新状态，不会强制节点重连。" type="info" :closable="false" show-icon class="mb-4" />
+    <ElAlert title="在线状态依据节点会话与心跳判断，异常断网可能延迟约60秒显示离线。状态变化会自动刷新；服务端每5秒检查变化，异常断线判定后可能再延迟约5秒。" type="info" :closable="false" show-icon class="mb-4" />
     <div class="node-summary">
       <ElCard v-for="card in cards" :key="card.key" shadow="never" :class="`summary-${card.key}`">
         <span>{{ card.label }}</span><strong>{{ summary?.[card.key] ?? '—' }}</strong>
@@ -84,14 +102,14 @@ onUnmounted(() => { generation++; detailGeneration++; });
         <ElButton type="primary" :loading="busy" @click="search">查询</ElButton>
         <ElButton :disabled="busy" @click="reset">重置</ElButton>
         <ElButton :loading="busy" @click="load">刷新状态</ElButton>
-        <span class="refresh-time">状态更新时间：{{ formattedTime(refreshed) }}</span>
+        <ElTag :type="adminRealtimeState === 'connected' ? 'success' : 'warning'">{{ connectionLabels[adminRealtimeState] }}</ElTag><span class="refresh-time">状态更新时间：{{ formattedTime(refreshed) }}</span>
       </div>
       <ElTable v-loading="busy" :data="rows" empty-text="暂无符合条件的任务节点">
         <ElTableColumn prop="name" label="节点名称" min-width="160" show-overflow-tooltip />
         <ElTableColumn prop="id" label="节点 ID" min-width="200" show-overflow-tooltip />
         <ElTableColumn label="连接状态" width="110"><template #default="{ row }"><ElTag :type="tagType(row.status)">{{ labels[row.status as State] }}</ElTag></template></ElTableColumn>
-        <ElTableColumn label="处理状态" width="110"><template #default="{ row }">{{ row.busy ? '处理中' : row.status === 'online' ? '空闲' : '—' }}</template></ElTableColumn>
-        <ElTableColumn label="当前任务" min-width="150"><template #default="{ row }">{{ row.current_task ? taskName(row.current_task.kind) : '—' }}</template></ElTableColumn>
+        <ElTableColumn label="处理状态" width="110"><template #default="{ row }">{{ row.busy ? '处理中（' + currentTasks(row as NodeEntry).length + '）' : row.status === 'online' ? '空闲' : '—' }}</template></ElTableColumn>
+        <ElTableColumn label="当前任务" min-width="150"><template #default="{ row }">{{ currentTasks(row as NodeEntry).map(task => taskName(task.kind)).join('、') || '—' }}</template></ElTableColumn>
         <ElTableColumn label="创建时间" width="180"><template #default="{ row }">{{ formattedTime(row.created) }}</template></ElTableColumn>
         <ElTableColumn label="操作" width="80" fixed="right"><template #default="{ row }"><ElButton type="primary" link @click="details(row.id)">详情</ElButton></template></ElTableColumn>
       </ElTable>
@@ -110,10 +128,18 @@ onUnmounted(() => { generation++; detailGeneration++; });
             <dt>处理状态</dt><dd>{{ selected.busy ? '处理中' : selected.status === 'online' ? '空闲' : '—' }}</dd>
             <dt>创建时间</dt><dd>{{ formattedTime(selected.created) }}</dd>
             <dt>状态更新时间</dt><dd>{{ formattedTime(selected.server_time || 0) }}</dd>
-            <template v-if="selected.current_task">
-              <dt>当前任务类型</dt><dd>{{ taskName(selected.current_task.kind) }}</dd>
-              <dt>当前任务 ID</dt><dd>{{ selected.current_task.id }}</dd>
-              <dt>任务开始时间</dt><dd>{{ formattedTime(selected.current_task.started) }}</dd>
+            <template v-for="task in currentTasks(selected)" :key="task.id">
+              <dt>当前任务类型</dt><dd>{{ taskName(task.kind) }}</dd>
+              <dt>当前任务 ID</dt><dd>{{ task.id }}</dd>
+              <dt>处理进度</dt>
+              <dd>
+                <span v-if="task.kind === 'audio.transcribe'">处理中（暂不提供精确百分比）</span>
+                <template v-else>
+                  <ElProgress :percentage="Math.max(0, Math.min(100, task.progress))" />
+                  <span class="task-progress-note">节点上报进度；下载、模型加载期间可能保持不变。</span>
+                </template>
+              </dd>
+              <dt>任务开始时间</dt><dd>{{ formattedTime(task.started) }}</dd>
             </template>
           </dl>
         </template>
@@ -124,6 +150,7 @@ onUnmounted(() => { generation++; detailGeneration++; });
 </template>
 
 <style scoped>
+.task-progress-note { color: var(--el-text-color-secondary); font-size: 12px; }
 .node-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .node-summary strong { display: block; margin-top: 8px; font-size: 28px; }
 .summary-online strong { color: var(--el-color-success); }

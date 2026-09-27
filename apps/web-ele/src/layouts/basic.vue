@@ -16,8 +16,10 @@ import { preferences, usePreferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
 
 import { useAuthStore } from '#/store';
+import { useAdminRealtime } from '#/services/admin-realtime';
 import LoginForm from '#/views/_core/authentication/login.vue';
 
+useAdminRealtime();
 const notifications = ref<NotificationItem[]>([]);
 
 const router = useRouter();
