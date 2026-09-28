@@ -19,6 +19,11 @@ const fields: { key: keyof Config; label: string; help: string; min: number; max
   { key: 'client_silence_seconds', label: '服务端接收超时', help: '服务端超过此时间未收到 ping，关闭连接。至少为浏览器心跳间隔的 2 倍加 5 秒，且不小于 35 秒。', min: 35, max: 900 },
   { key: 'auth_check_seconds', label: '登录状态复查间隔', help: '空闲连接检查登录是否失效的间隔。增大后，退出登录或撤销会话的检测可能变慢；业务事件发送前仍会校验权限。', min: 5, max: 300 },
 ];
+const browserFields = new Set<keyof Config>(['ping_seconds', 'server_silence_seconds']);
+const fieldGroups = [
+  { key: 'browser', label: '浏览器端配置', fields: fields.filter((field) => browserFields.has(field.key)) },
+  { key: 'server', label: '服务端配置', fields: fields.filter((field) => !browserFields.has(field.key)) },
+];
 const access = useAccessStore();
 const canSave = computed(() => access.accessCodes.includes('websocket-config:update'));
 const tab = ref('admin');
@@ -63,15 +68,18 @@ onMounted(load);
           <ElAlert class="mb-4" title="保存后对新连接生效，已有连接保持原参数。刷新页面可应用新配置。" type="info" :closable="false" show-icon />
           <ElAlert v-if="error" class="mb-4" :title="error" type="error" :closable="false" />
           <ElForm v-if="config" label-position="top" :disabled="!canSave || busy || saving || !!error">
-            <div class="config-grid">
-              <ElFormItem v-for="field in fields" :key="field.key" :label="field.label">
-                <div>
-                  <ElInputNumber v-model="config[field.key]" :min="field.min" :max="field.max" :precision="0" :step="1" controls-position="right" :aria-label="field.label" />
-                  <span class="ml-2">秒</span>
-                  <p class="field-help">{{ field.help }}</p>
-                </div>
-              </ElFormItem>
-            </div>
+            <section v-for="group in fieldGroups" :key="group.key" class="config-group" :aria-labelledby="`ws-config-${group.key}`">
+              <h3 :id="`ws-config-${group.key}`" class="group-title">{{ group.label }}</h3>
+              <div class="config-grid">
+                <ElFormItem v-for="field in group.fields" :key="field.key" :label="field.label">
+                  <div>
+                    <ElInputNumber v-model="config[field.key]" :min="field.min" :max="field.max" :precision="0" :step="1" controls-position="right" :aria-label="field.label" />
+                    <span class="ml-2">秒</span>
+                    <p class="field-help">{{ field.help }}</p>
+                  </div>
+                </ElFormItem>
+              </div>
+            </section>
           </ElForm>
           <ElAlert v-if="validation" class="mb-4" :title="validation" type="warning" :closable="false" />
           <ElButton v-if="canSave" type="primary" :loading="saving" :disabled="busy || !!error || !config || !!validation" @click="save">保存配置</ElButton>
@@ -83,6 +91,8 @@ onMounted(load);
 </template>
 
 <style scoped>
+.config-group { max-width: 960px; margin-bottom: 16px; padding: 16px 20px 0; border: 1px solid var(--el-border-color-light); border-radius: 8px; }
+.group-title { margin: 0 0 16px; font-size: 15px; font-weight: 600; color: var(--el-text-color-primary); }
 .config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; max-width: 960px; }
 .field-help { margin-top: 8px; font-size: 12px; line-height: 1.6; color: var(--el-text-color-secondary); }
 @media (max-width: 720px) { .config-grid { grid-template-columns: 1fr; } }

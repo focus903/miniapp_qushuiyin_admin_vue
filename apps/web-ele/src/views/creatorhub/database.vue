@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useAccessStore } from '@vben/stores';
 import {
   ElAlert, ElButton, ElCheckbox, ElDialog, ElMessage, ElMessageBox,
-  ElOption, ElPagination, ElSelect, ElTable, ElTableColumn, ElTabPane, ElTabs, ElTag,
+  ElOption, ElPagination, ElRadio, ElRadioGroup, ElSelect, ElTable, ElTableColumn, ElTabPane, ElTabs, ElTag,
 } from 'element-plus';
 import { requestClient } from '#/api/request';
 
@@ -15,6 +15,7 @@ interface Backup {
   status: string;
   size: number;
   format?: 'sql' | 'sql.gz';
+  mode?: 'preserve' | 'rebuild';
   localReady?: boolean;
   protectionId?: string;
   target?: string;
@@ -28,6 +29,7 @@ const state = ref<Status>({ items: [], busy: false, maintenance: false });
 const buckets = ref<{ code: string; name: string }[]>([]);
 const cloud = ref(false);
 const compressed = ref(false);
+const exportMode = ref<'preserve' | 'rebuild'>('rebuild');
 const bucket = ref('');
 const submitting = ref(false);
 const loading = ref(false);
@@ -70,7 +72,7 @@ async function backup() {
   if (bucketCode === null) return;
   submitting.value = true;
   try {
-    await requestClient.post('/database/backups', { bucketCode, format: compressed.value ? 'sql.gz' : 'sql' });
+    await requestClient.post('/database/backups', { bucketCode, format: compressed.value ? 'sql.gz' : 'sql', mode: exportMode.value });
     ElMessage.success('备份任务已提交');
     await load();
   } finally { submitting.value = false; }
@@ -149,6 +151,17 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(timer); });
   <div class="p-4">
     <ElAlert class="mb-4" type="info" :closable="false" title="备份包含数据库表结构和数据，不包含图片、视频等文件。仅支持恢复本模块导出的、与当前数据库结构及版本一致的备份。" />
     <ElAlert v-if="state.maintenance" class="mb-4" type="warning" :closable="false" title="数据库维护中：业务请求和后台任务已暂停。若导入失败，请查看操作记录，可重试导入或确认数据库状态后解除维护。" />
+    <div v-if="can('backup')" class="mb-4 space-y-2">
+      <div class="flex flex-wrap items-center gap-3"><span>导出方式</span>
+        <ElRadioGroup v-model="exportMode" :disabled="disabled">
+          <ElRadio value="preserve">保留表结构</ElRadio>
+          <ElRadio value="rebuild">覆盖重建表（默认，同步表结构和数据）</ElRadio>
+        </ElRadioGroup>
+      </div>
+      <p class="text-sm text-muted-foreground">保留表结构：仅同步数据，不同步已有表结构。已有表不重建，清空并恢复表内数据；适用于空库或结构完全一致的数据库，不会自动补字段。</p>
+      <p class="text-sm text-amber-600">覆盖重建表（完整恢复备份内的表）：将表结构和数据同步为源库导出时的状态，不是持续实时同步。文件包含 DROP TABLE，使用服务器命令导入时会删除并重建备份中的表，再恢复数据；原表及数据会丢失，DDL 不能整体回滚。备份之外的表不会删除。</p>
+      <p class="text-sm text-muted-foreground">选项仅影响新建备份。后台导入仍要求结构和版本一致，只恢复数据，不执行 DROP；跨结构恢复请停服、备份目标库后使用服务器导入命令。</p>
+    </div>
     <div class="mb-4 flex flex-wrap items-center gap-3">
       <ElCheckbox v-if="can('backup') || can('import')" v-model="compressed" :disabled="disabled">压缩为 .sql.gz</ElCheckbox>
       <ElCheckbox v-if="can('backup') || can('import')" v-model="cloud" :disabled="disabled">同时备份到云端</ElCheckbox>
@@ -172,6 +185,7 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(timer); });
       <ElTableColumn prop="operator" label="操作人" width="110" show-overflow-tooltip />
       <ElTableColumn label="大小" width="110"><template #default="{ row }">{{ size(row.size) }}</template></ElTableColumn>
       <ElTableColumn v-if="tab === 'backups'" label="格式" width="95"><template #default="{ row }">{{ row.format || 'sql（转换）' }}</template></ElTableColumn>
+      <ElTableColumn v-if="tab === 'backups'" label="导出方式" width="125"><template #default="{ row }"><ElTag :type="row.mode === 'rebuild' ? 'warning' : 'info'">{{ row.mode === 'rebuild' ? '覆盖重建表' : '保留表结构' }}</ElTag></template></ElTableColumn>
       <ElTableColumn label="状态" width="90"><template #default="{ row }"><ElTag :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : 'warning'">{{ statuses[row.status] || row.status }}</ElTag></template></ElTableColumn>
       <ElTableColumn label="云端" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ row.cloud ? `${row.cloud.bucketCode} · ${statuses[row.cloud.status] || row.cloud.status}` : '—' }}</template></ElTableColumn>
       <ElTableColumn label="说明 / 编号" min-width="240" show-overflow-tooltip><template #default="{ row }">{{ row.error || (row.protectionId ? `保护备份：${row.protectionId}` : row.target || row.id) }}</template></ElTableColumn>

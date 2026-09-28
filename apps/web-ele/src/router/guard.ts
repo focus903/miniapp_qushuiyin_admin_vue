@@ -1,4 +1,8 @@
 import { allowedRoutes } from '#/utils/route-permissions';
+import { applyLayout } from '#/utils/menu-layout';
+import type { MenuLayoutResult } from '#/utils/menu-layout';
+import { requestClient } from '#/api/request';
+import { ElMessage } from 'element-plus';
 import type { Router } from 'vue-router';
 
 import { LOGIN_PATH } from '@vben/constants';
@@ -106,12 +110,21 @@ function setupAccessGuard(router: Router) {
     const userInfo = userStore.userInfo || (await authStore.fetchUserInfo());
     const userRoles = userInfo.roles ?? [];
 
-    // 生成菜单和路由
+    let menuRoutes: typeof accessRoutes;
+    try {
+      const layout = await requestClient.get<MenuLayoutResult>('/system/menu-layout');
+      if (!layout.ready) throw new Error('数据库菜单未初始化');
+      menuRoutes = applyLayout(accessRoutes, layout.items);
+    } catch {
+      ElMessage.error('数据库菜单加载失败，请确认已执行菜单迁移并刷新重试。');
+      return false;
+    }
+    // 布局调整后仍执行原有权限过滤，分组不能授予页面访问权限。
     const { accessibleMenus, accessibleRoutes } = await generateAccess({
       roles: userRoles,
       router,
       // 则会在菜单中显示，但是访问会被重定向到403
-      routes: allowedRoutes(accessRoutes, accessStore.accessCodes),
+      routes: allowedRoutes(menuRoutes, accessStore.accessCodes),
     });
 
     // 保存菜单信息和路由信息
