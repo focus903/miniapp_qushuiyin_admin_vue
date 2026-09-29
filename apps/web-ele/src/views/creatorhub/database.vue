@@ -6,6 +6,7 @@ import {
   ElOption, ElPagination, ElRadio, ElRadioGroup, ElSelect, ElTable, ElTableColumn, ElTabPane, ElTabs, ElTag,
 } from 'element-plus';
 import { requestClient } from '#/api/request';
+import CopyValue from '#/components/copy-value.vue';
 
 interface Backup {
   id: string;
@@ -17,12 +18,14 @@ interface Backup {
   format?: 'sql' | 'sql.gz';
   mode?: 'preserve' | 'rebuild';
   localReady?: boolean;
+  localPath?: string | null;
+  localExists?: boolean;
   protectionId?: string;
   target?: string;
   error: string;
-  cloud?: { bucketCode: string; status: string } | null;
+  cloud?: { bucketCode: string; status: string; key?: string } | null;
 }
-interface Status { items: Backup[]; busy: boolean; maintenance: boolean }
+interface Status { backupDirectory?: string; items: Backup[]; busy: boolean; maintenance: boolean }
 const access = useAccessStore();
 const can = (action: string) => access.accessCodes.includes(`database:${action}`);
 const state = ref<Status>({ items: [], busy: false, maintenance: false });
@@ -34,6 +37,9 @@ const bucket = ref('');
 const submitting = ref(false);
 const loading = ref(false);
 const importDialog = ref(false);
+const pathDialog = ref(false);
+const pathRecord = ref<Backup>();
+function showPath(row: Backup) { pathRecord.value = row; pathDialog.value = true; }
 const selectedFile = ref<File>();
 const inputKey = ref(0);
 const tab = ref('backups');
@@ -175,6 +181,9 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(timer); });
       <ElButton :loading="loading" @click="load">刷新</ElButton>
       <ElTag v-if="state.busy" type="warning">数据库操作执行中</ElTag>
     </div>
+    <div v-if="state.backupDirectory" class="mb-4 flex items-center gap-2 text-sm">
+      <span class="shrink-0">服务器备份目录：</span><CopyValue :value="state.backupDirectory" label="复制备份目录" />
+    </div>
     <ElTabs v-model="tab" @tab-change="page = 1">
       <ElTabPane label="备份记录" name="backups" />
       <ElTabPane label="操作记录" name="history" />
@@ -189,12 +198,21 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(timer); });
       <ElTableColumn label="状态" width="90"><template #default="{ row }"><ElTag :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : 'warning'">{{ statuses[row.status] || row.status }}</ElTag></template></ElTableColumn>
       <ElTableColumn label="云端" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ row.cloud ? `${row.cloud.bucketCode} · ${statuses[row.cloud.status] || row.cloud.status}` : '—' }}</template></ElTableColumn>
       <ElTableColumn label="说明 / 编号" min-width="240" show-overflow-tooltip><template #default="{ row }">{{ row.error || (row.protectionId ? `保护备份：${row.protectionId}` : row.target || row.id) }}</template></ElTableColumn>
-      <ElTableColumn v-if="tab === 'backups'" label="操作" width="160" fixed="right"><template #default="{ row }">
+      <ElTableColumn v-if="tab === 'backups'" label="操作" width="200" fixed="right"><template #default="{ row }">
+        <ElButton link type="primary" @click="showPath(row as Backup)">路径</ElButton>
         <ElButton v-if="can('export') && row.localReady" link type="primary" :disabled="disabled" @click="download(row as Backup)">导出</ElButton>
         <ElButton v-if="can('delete')" link type="danger" :disabled="disabled || state.maintenance" @click="remove(row as Backup)">删除</ElButton>
       </template></ElTableColumn>
     </ElTable>
     <ElPagination v-model:current-page="page" class="mt-4" :page-size="15" :total="rows.length" layout="total, prev, pager, next" />
+    <ElDialog v-model="pathDialog" title="备份存储路径" width="min(680px, 95vw)">
+      <div v-if="pathRecord" class="space-y-4">
+        <p class="text-sm text-muted-foreground">以下本地路径位于运行 Python 后端的服务器，不是浏览器下载目录。</p>
+        <div><p class="mb-1">本地文件</p><CopyValue v-if="pathRecord.localPath" :value="pathRecord.localPath" label="复制本地路径" /><span v-else>暂无路径</span></div>
+        <p>{{ pathRecord.localExists ? (pathRecord.localReady ? '文件存在，可结合备份状态确认是否可用。' : '文件存在，但尚未确认完整生成。') : '文件尚未生成或已不存在。' }}</p>
+        <div v-if="pathRecord.cloud"><p class="mb-1">云端存储桶</p><CopyValue :value="pathRecord.cloud.bucketCode" label="复制存储桶" /><p class="mb-1 mt-3">云端对象路径</p><CopyValue v-if="pathRecord.cloud.key" :value="pathRecord.cloud.key" label="复制云端路径" /><span v-else>暂无路径</span><p class="mt-2">云端状态：{{ statuses[pathRecord.cloud.status] || pathRecord.cloud.status }}</p></div>
+      </div>
+    </ElDialog>
     <ElDialog v-model="importDialog" title="导入数据库备份" width="540px" :close-on-click-modal="!submitting" :close-on-press-escape="!submitting" :show-close="!submitting">
       <p class="mb-4">导入前会自动创建 {{ compressed ? '.sql.gz' : '.sql' }} 保护备份。{{ cloud ? '本次保护备份也会上传到所选云端存储桶。' : '本次保护备份仅保存在服务器本地。' }}</p>
       <p class="mb-4">请先等待视频任务完成。恢复会覆盖管理员、用户和业务配置，可能需要重新登录。</p>
