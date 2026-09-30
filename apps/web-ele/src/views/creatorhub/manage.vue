@@ -22,12 +22,12 @@ const packageOrderOpen=ref(false);
 const detail = ref<Row>();
 const switching = ref(new Set<string>());
 const isSwitch = (key: string) => ['enabled', 'unlimited'].includes(key);
-const fields: Record<string,string> = {weight:'权重',feature:'功能',name:'名称',unit:'计费单位',unit_size:'每单位用量',points:'积分',enabled:'启用状态',code:'英文标识',daily_limit:'每天最多领取次数',price_fen:'价格（元）',base_points:'基础积分',bonus_points:'赠送积分',days:'有效天数',plan_code:'会员套餐',unlimited:'不限次数',daily_count:'每日免费次数',single_seconds:'单次最长秒数',daily_seconds:'每日总秒数',admin_username:'操作管理员账号',admin_id:'管理员ID',action:'操作',target_label:'操作对象',target_description:'操作说明',target:'原始目标标识',detail:'操作详情',created:'时间'};
+const fields: Record<string,string> = {weight:'权重',feature:'功能',name:'名称',unit:'计费单位',unit_size:'每单位用量',points:'积分',enabled:'启用状态',code:'英文标识',daily_limit:'每天最多领取次数',price_fen:'价格（元）',wx_product_id:'微信道具 ID',base_points:'基础积分',bonus_points:'赠送积分',days:'有效天数',plan_code:'会员套餐',unlimited:'不限次数',daily_count:'每日免费次数',single_seconds:'单次最长秒数',daily_seconds:'每日总秒数',admin_username:'操作管理员账号',admin_id:'管理员ID',action:'操作',target_label:'操作对象',target_description:'操作说明',target:'原始目标标识',detail:'操作详情',created:'时间'};
 const schemas: Record<string,string[]> = {
  'feature-billing':['feature','name','unit','unit_size','points','weight','enabled'],
  'point-rewards':['code','points','daily_limit','weight','enabled'],
- 'point-packages':['code','name','price_fen','base_points','bonus_points','weight','enabled'],
- 'membership-plans':['code','name','days','price_fen','enabled'],
+ 'point-packages':['code','name','wx_product_id','price_fen','base_points','bonus_points','weight','enabled'],
+ 'membership-plans':['code','name','days','wx_product_id','price_fen','enabled'],
  'membership-entitlements':['plan_code','feature','unlimited','daily_count','single_seconds','daily_seconds','weight'],
  logs:['created','admin_username','action','target_label','target_description'],
 };
@@ -35,8 +35,8 @@ const columns = computed(() => schemas[resource.value] || []);
 const hints: Record<string,string> = {
  'feature-billing':'费用按用量向上取整。例如每 30 秒 30 积分，31 秒收取 60 积分。关闭计费表示免费，不代表关闭小程序功能。',
  'point-rewards':'权重越大越靠前，相同权重按英文标识排序。新人注册奖励首次注册发放一次（含开发登录），不受每日次数影响；关闭期间注册及老用户不补发。签到按北京时间自然日领取；每日次数为 0 时不能领取。激励广告需接入可信的广告验证服务后才可用。',
- 'point-packages':'支持拖动排序，权重越大越靠前；相同权重按英文标识排序。基础积分与赠送积分合计发放。微信支付尚未开通，套餐配置不会自动开放购买。',
- 'membership-plans':'有效天数 0 表示永久有效，正数按 24 小时计算；禁用套餐后停止新开通，已有会员保留至到期。',
+ 'point-packages':'支持拖动排序，权重越大越靠前；相同权重按英文标识排序。基础积分与赠送积分合计发放。微信道具 ID 和价格须与微信对应环境的道具配置一致；道具 ID 留空禁止在线支付。',
+ 'membership-plans':'有效天数 0 表示永久有效，正数按 24 小时计算；禁用套餐后停止新开通，已有会员保留至到期。微信道具 ID 和价格须与微信对应环境的道具配置一致；道具 ID 留空禁止在线支付。',
  'membership-entitlements':'不限次数只放开次数限制，时长限制仍生效。每日免费次数 0 表示没有免费次数；时长 0 表示不限。',
  logs:'记录后台配置、权限和人工发放等操作；不记录密码和密钥。',
 };
@@ -55,6 +55,7 @@ function display(row:Row,key:string) {
  if(key==='days' && Number(value)===0) return '永久有效';
  if(resource.value==='feature-billing'&&key==='unit_size') return value===null||value===undefined?'—':`${value} ${unitLabels[String(row.unit)]||row.unit||''}`;
  if(key==='unit') return unitLabels[String(value)] || value;
+ if(key==='wx_product_id') return value || '未配置（禁止在线支付）';
  if(key==='price_fen') return (Number(value)/100).toFixed(2);
  if(key==='created') return value?new Date(Number(value)*1000).toLocaleString('zh-CN',{hour12:false}):'—';
  if(key==='code' && resource.value==='point-rewards') return value==='new_user'?'新人注册奖励':value==='signin'?'签到奖励':value==='ad'?'激励广告奖励':value;
@@ -97,7 +98,7 @@ function edit(row:Row) {
 }
 function add() {
  creating.value=true;keys.value=resource.value==='membership-entitlements'?{plan_code:'',feature:''}:{code:''};
- form.value=resource.value==='point-packages'?{name:'',price_fen:0,base_points:0,bonus_points:0,enabled:0,weight:0}:resource.value==='membership-plans'?{name:'',days:30,price_fen:0,enabled:0}:{unlimited:0,daily_count:0,single_seconds:0,daily_seconds:0,weight:0};editing.value=true;
+ form.value=resource.value==='point-packages'?{name:'',wx_product_id:'',price_fen:0,base_points:0,bonus_points:0,enabled:0,weight:0}:resource.value==='membership-plans'?{name:'',wx_product_id:'',days:30,price_fen:0,enabled:0}:{unlimited:0,daily_count:0,single_seconds:0,daily_seconds:0,weight:0};editing.value=true;
 }
 async function save() {
  if(creating.value && Object.values(keys.value).some(v=>!String(v).trim())){ElMessage.warning('请填写或选择完整标识');return;}
@@ -148,10 +149,13 @@ watch(resource,()=>{packageOrderOpen.value=false;entitlementOpen.value=false;pag
     <ElFormItem v-for="(value,key) in form" :key="key" :label="fields[key] || key">
      <ElSwitch v-if="isSwitch(key)" :model-value="Number(value)" :active-value="1" :inactive-value="0" :active-text="key==='unlimited'?'不限次数':'启用'" :inactive-text="key==='unlimited'?'有限次数':'禁用'" :aria-label="fields[key]" @update:model-value="v=>form[key]=Number(v)"/>
      <ElInputNumber v-else-if="key==='price_fen'" :model-value="Number(value)/100" :min="0" :max="10000000" :precision="2" @update:model-value="v=>form[key]=Math.round((v||0)*100)"/>
+     <ElInput v-else-if="key==='wx_product_id'" :model-value="String(value)" maxlength="128" placeholder="微信对应环境道具 ID，留空禁止在线支付" @update:model-value="v=>form[key]=v"/>
      <ElInputNumber v-else-if="typeof value==='number'" :model-value="Number(value)" :min="key==='unit_size'?1:0" :max="1000000000" :precision="0" :disabled="(key==='daily_count' && Number(form.unlimited)===1) || (['single_seconds','daily_seconds'].includes(key) && !secondsAllowed)" @update:model-value="v=>form[key]=v||0"/>
      <ElSelect v-else-if="key==='unit'" :model-value="String(value)" @update:model-value="v=>form[key]=v"><ElOption v-for="unit in allowedUnits" :key="unit" :label="unitLabels[unit]" :value="unit"/></ElSelect>
      <ElInput v-else :model-value="String(value)" maxlength="100" @update:model-value="v=>form[key]=v"/>
      <div v-if="key==='daily_count'" class="w-full text-xs text-gray-500">有限次数时，0 表示没有免费次数；打开“不限次数”后不使用此值。</div>
+     <div v-if="key==='wx_product_id'" class="w-full text-xs text-gray-500">道具 ID 与价格须和微信对应环境配置一致；留空禁止在线支付。此字段与英文标识独立，不修改原套餐标识。</div>
+     <div v-if="key==='price_fen'" class="w-full text-xs text-gray-500">输入单位为元，保存为整数分：1.99 元保存为 199 分，支付不再换算。</div>
      <div v-if="['single_seconds','daily_seconds'].includes(key)" class="w-full text-xs text-gray-500">0 表示不限时长，上传视频去水印、去字幕和文案提取支持时长权益。</div>
     </ElFormItem>
    </ElForm>
