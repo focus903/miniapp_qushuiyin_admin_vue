@@ -1,5 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router';
 const routes:RouteRecordRaw[]=[
+{path:'/creatorhub/proxy-pool',name:'CreatorHubProxyPool',component:()=>import('#/views/creatorhub/proxy-pool.vue'),meta:{title:'IP代理池',resource:'proxy-pool',permission:'proxy-pool:read',icon:'lucide:network',order:0.8}},
 {path:'/creatorhub/menu-layout',name:'CreatorHubMenuLayout',component:()=>import('#/views/creatorhub/menu-layout.vue'),meta:{title:'菜单管理',resource:'menu-layout',permission:'menu-layout:read',icon:'lucide:list-tree'}},
 {path:'/creatorhub/websocket-config',name:'CreatorHubWebSocketConfig',component:()=>import('#/views/creatorhub/websocket-config.vue'),meta:{title:'websocket连接配置',resource:'websocket-config',permission:'websocket-config:read',icon:'lucide:radio',order:0.6}},
 {path:'/creatorhub/worker-nodes',name:'CreatorHubWorkerNodes',component:()=>import('#/views/creatorhub/worker-nodes.vue'),meta:{title:'任务节点',resource:'worker-nodes',permission:'worker-nodes:read',icon:'lucide:network',order:0.75}},

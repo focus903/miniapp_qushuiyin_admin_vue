@@ -73,7 +73,7 @@ const task=computed(()=>['subtitle','watermark'].includes(kind.value));
 const choices=computed(()=>[[resource.value,String(route.meta.title)]]);
 const canRecycle=computed(()=>access.accessCodes.includes(trashed.value?'parses:restore':'parses:delete'));
 const canRead=(name:string)=>access.accessCodes.includes(`${name==='memberships'?'membership':name}:read`);
-const statusOptions=computed(()=>task.value?[['0','处理中'],['1','成功'],['2','失败/取消'],['3','过期']]:kind.value==='points'?[['reserved','冻结'],['committed','已入账'],['released','已释放']]:kind.value==='resources'?[['ready','可用'],['failed','失败'],['processing','处理中']]:kind.value==='orders'?[['pending','待支付'],['paid','已支付'],['manual','人工发放']]:[['success','成功'],['failed','失败'],['processing','处理中']]);
+const statusOptions=computed(()=>task.value?[['0','处理中'],['1','成功'],['2','失败/取消'],['3','过期']]:kind.value==='points'?[['reserved','冻结'],['committed','已入账']]:kind.value==='resources'?[['ready','可用'],['failed','失败'],['processing','处理中']]:kind.value==='orders'?[['pending','待支付'],['paid','已支付'],['manual','人工发放'],['closed','已关闭'],['refunded','已退款'],['refund_review','退款待核对']]:[['success','成功'],['failed','失败'],['processing','处理中']]);
 function modeHelp(value:unknown){return value==='cache'?'缓存：下载并持久保存视频、图片，优先存入已启用且可用的云存储；不可用时保存在服务器本地，后续复用已保存的文件。':value==='direct'?'直连：保存平台原始媒体地址，不下载持久保存；视频通过服务器流式转发播放，图片使用源地址。链接可能过期或受平台访问限制。':'未知模式';}
 function sourceClass(row:Row){
  if(typeof row.source_label!=='string'||!row.source_label)return undefined;
@@ -100,7 +100,7 @@ function show(key:string,value:unknown,row:Row={}):string {
  if(key==='share_text'&&!value)return '未记录';
  if(value===null||value===undefined)return '—';
  if(['deleted_at','created','updated','started','finished','starts','expires','paid_at'].includes(key))return Number(value)?new Date(Number(value)*1000).toLocaleString('zh-CN'):'—';
- if(key==='status'){if(row.cancelled)return '已取消';if(value==='committed'&&row.feature==='admin_deduct')return '扣除成功';return ({'0':'处理中','1':'成功','2':'失败','3':'过期',committed:Number(row.points)<0?'入账/退回':'消费结算',reserved:'冻结',released:'释放',success:'成功',failed:'失败',processing:'处理中',pending:'待处理/支付',paid:'已支付',manual:'人工发放',ready:'可用'} as Record<string,string>)[String(value)]||String(value);}
+ if(key==='status'){if(row.cancelled)return '已取消';if(value==='committed'&&row.feature==='admin_deduct')return '扣除成功';return ({'0':'处理中','1':'成功','2':'失败','3':'过期',committed:Number(row.points)<0?'入账/退回':'消费结算',reserved:'冻结',released:'释放',success:'成功',failed:'失败',processing:'处理中',pending:'待处理/支付',paid:'已支付',manual:'人工发放',closed:'已关闭',refunded:'已退款',refund_review:'部分退款待核对',ready:'可用'} as Record<string,string>)[String(value)]||String(value);}
  if(['development','is_valid','cleanup_pending','cancelled'].includes(key))return value===true||Number(value)===1?'是':'否';
  if(key==='scene')return ({parseShareLink:'视频／图集提取',extractTextFromLink:'视频文案提取'} as Record<string,string>)[String(value)]||String(value);
  if(key==='media_type')return ({image:'图片',video:'视频'} as Record<string,string>)[String(value)]||String(value);
