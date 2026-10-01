@@ -7,6 +7,7 @@ const routes:RouteRecordRaw[]=[
  ...[['parses','/parse-records','用户解析记录'],['resources','/parse-resources','共享资源'],['files','/parse-files','关联文件']].map(([resource,path,title])=>({name:`Parse${resource}`,path:path!,component:page,meta:{title:title!,resource:resource!,permission:`${resource}:read`}})),
 ]},
 {name:'VideoOperations',path:'/video',meta:{title:'视频任务',icon:'lucide:video',order:5},children:[
+ {name:'VideoTranscriptRecords',path:'/transcript-records',component:()=>import('#/views/creatorhub/transcript-records.vue'),meta:{title:'视频文案提取记录',permission:'transcripts:read'}},
  ...[['subtitle','/video-tasks','视频去字幕'],['watermark','/watermark-tasks','视频去水印']].map(([resource,path,title])=>({name:`Video${resource}`,path:path!,component:page,meta:{title:title!,resource:resource!,permission:`${resource}:read`}})),
 ]},
 {name:'PointRecords',path:'/points/records',component:page,meta:{title:'积分流水',resource:'points',permission:'points:read',icon:'lucide:coins',order:6}},
