@@ -7,18 +7,21 @@ import { requestClient } from '#/api/request';
 import AppDatePicker from '#/components/app-date-picker.vue';
 import CopyValue from '#/components/copy-value.vue';
 
-type Row={id:string|number;openid:string;nickname?:string;avatar_url?:string;source:string;status?:string;error?:string;created:number;updated?:number;finished?:number;text?:string};
+type Row={id:string|number;openid:string;nickname?:string;avatar_url?:string;source:string;status?:string;error?:string;created:number;updated?:number;finished?:number;text?:string;share_text?:string;platform?:string};
 type Result={items:Row[];total:number};
 const access=useAccessStore();
 const allowed=computed(()=>access.accessCodes.includes('transcripts:read'));
 const kind=ref('transcripts'),page=ref(1),size=ref(20),total=ref(0);
 const rows=ref<Row[]>([]),busy=ref(false),error=ref('');
-const openid=ref(''),source=ref(''),status=ref('');
+const openid=ref(''),source=ref(''),status=ref(''),platform=ref('');
 const dates=ref<[Date,Date]|null>(null);
 const dialog=ref(false),detail=ref<Row|null>(null),detailBusy=ref(false),detailError=ref('');
 const states:Record<string,string>={queued:'排队中',preparing:'准备中',running:'处理中',succeeded:'成功',failed:'失败',cancelled:'已取消'};
 let listVersion=0,detailVersion=0,active=true;
+const platformNames:Record<string,string>={douyin:'抖音',xiaohongshu:'小红书',bilibili:'B站',kuaishou:'快手',xigua:'西瓜视频',toutiao:'今日头条',weibo:'微博',dongchedi:'懂车帝',pipixia:'皮皮虾',youtube:'YouTube'};
+const platformName=(row:Row)=>row.source==='url'?(row.platform?(platformNames[row.platform]||row.platform):'未记录'):'—';
 const sourceName=(value:string)=>value==='upload'?'上传视频':value==='url'?'分享链接':value;
+const sourceType=(value:string)=>value==='upload'?'success':value==='url'?'primary':'info';
 const time=(value?:number)=>value?new Date(value*1000).toLocaleString('zh-CN'):'—';
 async function load(){
  const version=++listVersion;
@@ -26,7 +29,7 @@ async function load(){
  if(!allowed.value||!active){busy.value=false;return;}
  busy.value=true;
  try{
-  const result=await requestClient.get<Result>(`/operations/records/${kind.value}`,{params:{page:page.value,page_size:size.value,openid:openid.value,source:source.value,...(kind.value==='text-tasks'?{status:status.value}:{}),start:dates.value?Math.floor(dates.value[0].getTime()/1000):0,end:dates.value?Math.floor(dates.value[1].getTime()/1000):0}});
+  const result=await requestClient.get<Result>(`/operations/records/${kind.value}`,{params:{page:page.value,page_size:size.value,openid:openid.value,source:source.value,platform:platform.value,...(kind.value==='text-tasks'?{status:status.value}:{}),start:dates.value?Math.floor(dates.value[0].getTime()/1000):0,end:dates.value?Math.floor(dates.value[1].getTime()/1000):0}});
   if(version===listVersion&&active&&allowed.value){rows.value=result.items;total.value=result.total;}
  }catch(e){if(version===listVersion)error.value=e instanceof Error?e.message:'记录加载失败';}
  finally{if(version===listVersion)busy.value=false;}
@@ -64,6 +67,7 @@ onActivated(()=>{if(!active){active=true;void load();}});
    <div class="mb-4 flex flex-wrap items-center gap-3">
     <ElInput v-model="openid" placeholder="完整 OpenId" clearable style="width:240px" @keyup.enter="search" />
     <ElSelect v-model="source" placeholder="全部来源" clearable style="width:150px"><ElOption label="分享链接" value="url" /><ElOption label="上传视频" value="upload" /></ElSelect>
+    <ElSelect v-model="platform" placeholder="全部平台" filterable clearable style="width:160px"><ElOption v-for="(label,value) in platformNames" :key="value" :label="label" :value="value" /></ElSelect>
     <ElSelect v-if="kind==='text-tasks'" v-model="status" placeholder="全部状态" clearable style="width:150px"><ElOption v-for="(label,value) in states" :key="value" :label="label" :value="value" /></ElSelect>
     <AppDatePicker v-model="dates" type="datetimerange" start-placeholder="创建开始时间" end-placeholder="创建结束时间" />
     <ElButton type="primary" :loading="busy" @click="search">查询</ElButton>
@@ -73,7 +77,9 @@ onActivated(()=>{if(!active){active=true;void load();}});
     <ElTableColumn label="头像" width="80"><template #default="{row}"><ElAvatar :size="44" :src="row.avatar_url||''">用户</ElAvatar></template></ElTableColumn>
     <ElTableColumn label="用户 OpenId" min-width="250"><template #default="{row}"><CopyValue :value="row.openid" label="复制用户 OpenId" /></template></ElTableColumn>
     <ElTableColumn label="昵称" width="130" show-overflow-tooltip><template #default="{row}">{{row.nickname||'未设置'}}</template></ElTableColumn>
-    <ElTableColumn label="来源" width="110"><template #default="{row}">{{sourceName(row.source)}}</template></ElTableColumn>
+    <ElTableColumn label="来源" width="110"><template #default="{row}"><ElTag :type="sourceType(row.source)" effect="light">{{sourceName(row.source)}}</ElTag></template></ElTableColumn>
+    <ElTableColumn label="平台" width="110"><template #default="{row}">{{platformName(row as Row)}}</template></ElTableColumn>
+    <ElTableColumn label="原始分享内容" min-width="280"><template #default="{row}"><CopyValue v-if="row.source==='url'&&row.share_text" :value="row.share_text" label="复制原始分享内容"><span class="share-preview" :title="row.share_text">{{row.share_text}}</span></CopyValue><span v-else>{{row.source==='url'?'未记录':'—'}}</span></template></ElTableColumn>
     <ElTableColumn label="状态" width="100"><template #default="{row}"><ElTag :type="row.status==='failed'?'danger':row.status==='cancelled'?'info':!row.status||row.status==='succeeded'?'success':'warning'">{{kind==='transcripts'?'成功':states[row.status]||row.status}}</ElTag></template></ElTableColumn>
     <ElTableColumn v-if="kind==='text-tasks'" prop="error" label="错误原因" min-width="200" show-overflow-tooltip />
     <ElTableColumn label="创建时间" width="180"><template #default="{row}">{{time(row.created)}}</template></ElTableColumn>
@@ -88,7 +94,8 @@ onActivated(()=>{if(!active){active=true;void load();}});
     <template v-if="detail">
      <ElDescriptions :column="2" border>
       <ElDescriptionsItem label="记录编号">{{detail.id}}</ElDescriptionsItem>
-      <ElDescriptionsItem label="来源">{{sourceName(detail.source)}}</ElDescriptionsItem>
+      <ElDescriptionsItem label="来源"><ElTag :type="sourceType(detail.source)" effect="light">{{sourceName(detail.source)}}</ElTag></ElDescriptionsItem>
+      <ElDescriptionsItem v-if="detail.source==='url'" label="平台">{{platformName(detail)}}</ElDescriptionsItem>
       <ElDescriptionsItem label="用户 OpenId"><CopyValue :value="detail.openid" label="复制用户 OpenId" /></ElDescriptionsItem>
       <ElDescriptionsItem label="昵称">{{detail.nickname||'未设置'}}</ElDescriptionsItem>
       <ElDescriptionsItem label="状态">{{detail.status?states[detail.status]||detail.status:'成功'}}</ElDescriptionsItem>
@@ -96,6 +103,10 @@ onActivated(()=>{if(!active){active=true;void load();}});
       <ElDescriptionsItem v-if="detail.status" label="完成时间">{{time(detail.finished)}}</ElDescriptionsItem>
       <ElDescriptionsItem v-if="detail.error" label="错误原因">{{detail.error}}</ElDescriptionsItem>
      </ElDescriptions>
+     <template v-if="detail.source==='url'">
+      <div class="my-3 flex items-center justify-between"><strong>原始分享内容</strong><CopyValue v-if="detail.share_text" :value="detail.share_text" label="复制原始分享内容">复制全文</CopyValue></div>
+      <pre class="transcript-text share-text">{{detail.share_text||'未记录原始分享内容'}}</pre>
+     </template>
      <div class="my-3 flex items-center justify-between"><strong>提取文案</strong><CopyValue v-if="detail.text" :value="detail.text" label="复制文案全文">复制全文</CopyValue></div>
      <pre class="transcript-text">{{detail.text||'暂无文案结果'}}</pre>
     </template>
@@ -106,4 +117,6 @@ onActivated(()=>{if(!active){active=true;void load();}});
 
 <style scoped>
 .transcript-text { max-height:55vh; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.8; padding:16px; background:var(--el-fill-color-light); border-radius:6px; font-family:inherit; }
+.share-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; white-space:pre-wrap; }
+.share-text { max-height:24vh; }
 </style>

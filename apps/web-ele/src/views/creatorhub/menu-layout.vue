@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useAccessStore } from '@vben/stores';
-import { ElAlert, ElButton, ElCard, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag, ElTree } from 'element-plus';
+import { IconPicker } from '@vben/common-ui';
+import { IconifyIcon } from '@vben/icons';
+import { ElAlert, ElButton, ElCard, ElDialog, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag, ElTree } from 'element-plus';
 import type { MenuGroup, MenuItem, MenuLayoutResult, MenuPage } from '#/utils/menu-layout';
 import { normalizeLayout } from '#/utils/menu-layout';
 import routes from '#/router/routes/modules/creatorhub';
@@ -15,13 +17,41 @@ const ready = ref(false);
 const busy = ref(false);
 const dirty = ref(false);
 const saved = ref(false);
+const iconOpen=ref(false), iconTarget=ref(''), iconDraft=ref('');
+const iconValid=computed(()=>iconDraft.value.trim().length<=100 && /^[a-zA-Z0-9:_-]*$/.test(iconDraft.value.trim()));
+const iconOptions=computed(()=>[...new Set([
+  'lucide:folder','lucide:users','lucide:user','lucide:video','lucide:file-text','lucide:link','lucide:coins','lucide:crown',
+  'lucide:receipt','lucide:layout-dashboard','lucide:settings','lucide:shield-check','lucide:database','lucide:network',
+  'lucide:audio-lines','lucide:image','lucide:star','lucide:history','lucide:list-tree','lucide:smartphone',
+  ...items.value.flatMap(item=>[item.icon,...(item.kind==='group'?item.children.map(page=>page.icon):[])]).filter((icon):icon is string=>!!icon),
+])]);
 const groups = computed(() => items.value.filter((item): item is MenuGroup => item.kind === 'group'));
 const disabled = computed(() => busy.value || !ready.value || !canEdit.value);
 const label = (item: MenuItem) => item.label;
 function changed() { dirty.value = true; saved.value = false; }
+function findItem(id:string):MenuItem|undefined {
+ return items.value.flatMap(item=>item.kind==='group'?[item,...item.children]:[item]).find(item=>item.id===id);
+}
+function editIcon(item:MenuItem) {
+ if(disabled.value)return;
+ iconTarget.value=item.id;iconDraft.value=item.icon??'';iconOpen.value=true;
+}
+function applyIcon() {
+ if(disabled.value||!iconOpen.value||!iconValid.value)return;
+ const item=findItem(iconTarget.value);
+ if(!item){iconOpen.value=false;return;}
+ const icon=iconDraft.value.trim();
+ if((item.icon??'')!==icon){item.icon=icon;changed();}
+ iconOpen.value=false;
+}
+function clearIcon(item:MenuItem) {
+ if(disabled.value)return;
+ const current=findItem(item.id);
+ if(current?.icon){current.icon='';changed();}
+}
 function adopt(result: MenuLayoutResult) {
   revision.value = result.revision; ready.value = result.ready;
-  items.value = normalizeLayout(routes, result.items); dirty.value = false;
+  items.value = normalizeLayout(routes, result.items); dirty.value = false; iconOpen.value=false;
 }
 async function load() {
   if (busy.value) return;
@@ -105,13 +135,15 @@ onMounted(load);
         :draggable="!disabled" :allow-drop="allowDrop" @node-drop="changed">
         <template #default="{ data }">
           <div class="menu-row">
-            <span class="menu-title"><span class="mr-2 text-gray-400">⠿</span>{{ label(data) }}
+            <span class="menu-title"><span class="mr-2 text-gray-400">⠿</span><IconifyIcon v-if="data.icon" :icon="data.icon" class="menu-current-icon" :title="data.icon" />{{ label(data) }}
               <ElTag v-if="data.kind === 'group'" class="ml-2" size="small">分组</ElTag>
             </span>
             <div class="menu-actions" @click.stop>
               <ElButton text size="small" :disabled="disabled" @click="shift(data, -1)">上移</ElButton>
               <ElButton text size="small" :disabled="disabled" @click="shift(data, 1)">下移</ElButton>
               <ElButton text size="small" :disabled="disabled" @click="editGroup(data)">重命名</ElButton>
+              <ElButton text size="small" :disabled="disabled" @click="editIcon(data)">编辑图标</ElButton>
+              <ElButton text size="small" :disabled="disabled || !data.icon" @click="clearIcon(data)">清空图标</ElButton>
               <template v-if="data.kind === 'group'">
                 <ElButton text type="danger" size="small" :disabled="disabled || data.children.length > 0" title="只能删除空分组" @click="removeGroup(data)">删除空组</ElButton>
               </template>
@@ -124,12 +156,23 @@ onMounted(load);
         </template>
       </ElTree>
     </ElCard>
+    <ElDialog v-model="iconOpen" title="编辑菜单图标" width="min(520px,94vw)" destroy-on-close>
+      <p class="mb-3 text-sm text-gray-500">选择常用图标，或输入图标名称；留空表示不显示图标。</p>
+      <IconPicker v-model="iconDraft" prefix="" :auto-fetch-api="false" :icons="iconOptions" :disabled="disabled" />
+      <ElInput v-model="iconDraft" class="mt-3" placeholder="例如 lucide:video" :maxlength="100" clearable :disabled="disabled" aria-label="图标名称" />
+      <div class="menu-icon-preview"><span>预览：</span><IconifyIcon v-if="iconDraft.trim() && iconValid" :icon="iconDraft.trim()" class="size-6" /><span v-else>无图标</span></div>
+      <ElAlert v-if="!iconValid" title="图标名称最多100个字符，仅支持字母、数字、冒号、下划线和短横线。" type="error" :closable="false" />
+      <p class="mt-3 text-sm text-gray-500">应用后需点击“保存全局布局”，刷新页面后所有管理员统一生效。</p>
+      <template #footer><ElButton @click="iconOpen=false">取消</ElButton><ElButton :disabled="disabled" @click="iconDraft=''">清空</ElButton><ElButton type="primary" :disabled="disabled || !iconValid" @click="applyIcon">应用</ElButton></template>
+    </ElDialog>
   </div>
 </template>
 
 <style scoped>
 .menu-row { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
 .menu-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-current-icon { display:inline-block; width:18px; height:18px; margin-right:8px; vertical-align:middle; }
+.menu-icon-preview { display:flex; align-items:center; gap:8px; min-height:40px; margin-top:12px; }
 .menu-actions { display: flex; flex-shrink: 0; align-items: center; gap: 4px; }
 :deep(.el-tree-node__content) { height: 46px; border-bottom: 1px solid var(--el-border-color-lighter); }
 @media (max-width: 640px) {

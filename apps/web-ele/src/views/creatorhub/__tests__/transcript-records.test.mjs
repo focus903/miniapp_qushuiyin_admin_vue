@@ -7,7 +7,7 @@ import * as vue from 'vue';
 
 function setup(){
  const text=readFileSync(new URL('../transcript-records.vue',import.meta.url),'utf8');
- const source=text.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]+'\nexports.api={load,openDetail,stop,kind,rows,total,busy,error,dialog,detail,detailBusy,detailError,openid,source,status};';
+ const source=text.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]+'\nexports.api={load,openDetail,stop,kind,rows,total,busy,error,dialog,detail,detailBusy,detailError,openid,source,status,platform};';
  const access=vue.reactive({accessCodes:['transcripts:read']});
  const calls=[];const client={get:async(url,options)=>{calls.push({url,options});return {items:[],total:0};}};
  const mocks={vue:{...vue,onMounted(){},onActivated(){},onDeactivated(){},onUnmounted(){}},'@vben/stores':{useAccessStore:()=>access},'#/api/request':{requestClient:client}};
@@ -41,4 +41,14 @@ test('late detail cannot reappear after leaving page',async()=>{
 test('detail API failure is shown and does not retain previous text',async()=>{
  const s=setup();s.detail.value={id:'old',text:'old text'};s.client.get=async()=>{throw new Error('记录不存在');};
  await s.openDetail({id:'missing'});assert.equal(s.detail.value,null);assert.equal(s.detailError.value,'记录不存在');assert.equal(s.detailBusy.value,false);
+});
+
+
+test('platform filter is sent for results and tasks and can be cleared',async()=>{
+ const s=setup();s.platform.value='douyin';await s.load();
+ assert.equal(s.calls.at(-1).options.params.platform,'douyin');
+ s.kind.value='text-tasks';await vue.nextTick();await s.load();
+ assert.equal(s.calls.at(-1).url,'/operations/records/text-tasks');
+ assert.equal(s.calls.at(-1).options.params.platform,'douyin');
+ s.platform.value='';await s.load();assert.equal(s.calls.at(-1).options.params.platform,'');
 });

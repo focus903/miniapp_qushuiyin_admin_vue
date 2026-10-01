@@ -1,5 +1,7 @@
 export function adminActionLabel(value:unknown):string {
  return ({
+  'proxy-pool.delete':'删除代理','proxy-pool.delete-failed':'删除失效代理',
+  'proxy-pool.custom.create':'新增自定义代理','proxy-pool.custom.update':'编辑自定义代理','proxy-pool.custom.import':'导入自定义代理',
   'config.packages.reorder':'调整充值套餐排序',
   'config.membership-plans.reorder':'调整会员套餐排序',
   'config.entitlements.reorder':'调整套餐权益排序',

@@ -23,6 +23,12 @@ function openLoginHistory(row:Row){if(!access.accessCodes.includes('users:read')
 watch(()=>route.fullPath,()=>{loginHistoryOpen.value=false;});
 onDeactivated(()=>{loginHistoryOpen.value=false;});
 const overview=ref<Row>({});const detail=ref<Row>({});const visible=ref(false);const detailName=ref('');const selectedUser=ref('');const tab=ref('');const history=ref<Row[]>([]);const historyTotal=ref(0);const historyPage=ref(1);const historyBusy=ref(false);
+const overviewGroups=[
+ {id:'general',title:'基础数据',description:'用户数为累计；解析次数和实际消费积分按记录创建时间筛选。',metrics:['users','parses','consumed_points']},
+ {id:'transcripts',title:'视频文案提取',description:'成功次数包含同步和异步结果，链接、上传是其中的分项。异步任务单独统计，成功率不包含同步失败及取消任务。',metrics:['transcript_success','transcript_url_success','transcript_upload_success','text_task_completed','text_task_success_rate']},
+ {id:'subtitle',title:'视频去字幕',description:'已结束任务只计成功和失败，排除取消、处理中及已过期任务。',metrics:['subtitle_completed','subtitle_success_rate']},
+ {id:'watermark',title:'视频去水印',description:'已结束任务只计成功和失败，排除取消、处理中及已过期任务。',metrics:['watermark_completed','watermark_success_rate']},
+];
 // 详情只展示一份账户和会员信息，隐藏嵌套对象及重复的套餐编号。
 const detailFields=computed(()=>{
  const value:Row={...detail.value};
@@ -114,8 +120,8 @@ watch(deletionOpen,value=>{if(!value)clearUserDeletion();},{flush:'sync'});
 watch(()=>route.fullPath,clearUserDeletion,{flush:'sync'});
 onDeactivated(clearUserDeletion);onUnmounted(clearUserDeletion);
 
-const labels:Record<string,string>={register_region:'注册 IP 归属地',last_login_region:'最新 IP 归属地',region:'IP 归属地',region_source:'解析来源',region_resolved_at:'地区解析时间',register_ip:'注册 IP',last_login_ip:'最新登录 IP',last_login_at:'最新登录时间',ip:'登录 IP',method:'登录方式',ledger_user_info:'用户信息',user_info:'用户信息',member_info:'会员信息',time_info:'时间信息',nickname:'昵称',created_at:'创建时间',updated_at:'更新时间',is_vip:'会员状态',plan_name:'会员套餐',share_parse_count:'分享链接解析次数',source_label:'积分来源',source_url:'完整分享链接',object_url:'文件地址',association_note:'关联说明',object_key:'文件路径',content_md5:'内容 MD5',id:'记录编号',openid:'用户 OpenId',development:'开发账号',status:'状态',deleted_at:'删除时间',deleted_by:'删除管理员ID',scene:'场景',platform:'平台',title:'标题',share_text:'原始分享内容',error_code:'错误码',created:'创建时间',finished:'完成时间',updated:'更新时间',resource_key:'资源标识',output_mode:'模式',run_id:'批次',is_valid:'有效状态',upload_status:'上传状态',media_type:'媒体类型',position:'顺序',storage_type:'存储类型',storage_ref:'存储引用',bucket_code:'存储桶',file_size:'文件大小',fallback_reason:'回退原因',cleanup_pending:'待清理',progress:'进度（%）',error:'错误原因',detected_frames:'修复帧数',duration:'时长（秒）',size:'文件大小',width:'视频宽度',height:'视频高度',x:'区域 X',y:'区域 Y',w:'区域宽',h:'区域高',started:'开始时间',expires:'到期时间',cancelled:'已取消',feature:'功能',day:'日期',balance_before:'变动前积分',point_change:'变动积分',balance_after:'积分余额',points:'积分变动',duration_ms:'用量（毫秒）',business_id:'业务编号',plan_code:'会员套餐',starts:'生效时间',balance:'积分余额',reserved:'冻结积分',used_count:'已用次数',reserved_count:'冻结次数',used_ms:'已用时长（毫秒）',reserved_ms:'冻结时长（毫秒）',order_type:'订单类型',amount_fen:'金额（元）',paid_at:'支付时间',admin_username:'操作管理员账号',admin_id:'管理员编号',action:'操作',target:'操作目标',users:'累计用户数',parses:'解析次数',consumed_points:'实际消耗积分',subtitle_completed:'去字幕已结束任务',subtitle_success_rate:'去字幕成功率（%）',watermark_completed:'去水印已结束任务',watermark_success_rate:'去水印成功率（%）'};
-const columnMap:Record<string,string[]>={login_records:['ip','region','method','created'],users:['user_info','member_info','share_parse_count','development','reserved','time_info'],parses:['openid','nickname','platform','scene','status','share_text','created'],resources:['resource_key','share_text','source_url','platform','output_mode','status','run_id','updated'],files:['resource_key','media_type','is_valid','upload_status','output_mode','run_id','file_size'],subtitle:['openid','nickname','status','progress','duration','error','created'],watermark:['openid','nickname','status','progress','duration','error','created'],points:['openid','nickname','source_label','balance_before','point_change','balance_after','status','created'],memberships:['openid','nickname','plan_code','starts','expires'],orders:['openid','nickname','order_type','status','amount_fen','points','created'],usage:['feature','day','used_count','reserved_count','used_ms'],logs:['admin_username','action','target','created']};
+const labels:Record<string,string>={register_region:'注册 IP 归属地',last_login_region:'最新 IP 归属地',region:'IP 归属地',region_source:'解析来源',region_resolved_at:'地区解析时间',register_ip:'注册 IP',last_login_ip:'最新登录 IP',last_login_at:'最新登录时间',ip:'登录 IP',method:'登录方式',ledger_user_info:'用户信息',user_info:'用户信息',ip_info:'IP信息',member_info:'会员信息',time_info:'时间信息',nickname:'昵称',created_at:'创建时间',updated_at:'更新时间',is_vip:'会员状态',plan_name:'会员套餐',share_parse_count:'分享链接解析次数',source_label:'积分来源',source_url:'完整分享链接',object_url:'文件地址',association_note:'关联说明',object_key:'文件路径',content_md5:'内容 MD5',id:'记录编号',openid:'用户 OpenId',development:'开发账号',status:'状态',deleted_at:'删除时间',deleted_by:'删除管理员ID',scene:'场景',platform:'平台',title:'标题',share_text:'原始分享内容',error_code:'错误码',created:'创建时间',finished:'完成时间',updated:'更新时间',resource_key:'资源标识',output_mode:'模式',run_id:'批次',is_valid:'有效状态',upload_status:'上传状态',media_type:'媒体类型',position:'顺序',storage_type:'存储类型',storage_ref:'存储引用',bucket_code:'存储桶',file_size:'文件大小',fallback_reason:'回退原因',cleanup_pending:'待清理',progress:'进度（%）',error:'错误原因',detected_frames:'修复帧数',duration:'时长（秒）',size:'文件大小',width:'视频宽度',height:'视频高度',x:'区域 X',y:'区域 Y',w:'区域宽',h:'区域高',started:'开始时间',expires:'到期时间',cancelled:'已取消',feature:'功能',day:'日期',balance_before:'变动前积分',point_change:'变动积分',balance_after:'积分余额',points:'积分变动',duration_ms:'用量（毫秒）',business_id:'业务编号',plan_code:'会员套餐',starts:'生效时间',balance:'积分余额',reserved:'冻结积分',used_count:'已用次数',reserved_count:'冻结次数',used_ms:'已用时长（毫秒）',reserved_ms:'冻结时长（毫秒）',order_type:'订单类型',amount_fen:'金额（元）',paid_at:'支付时间',admin_username:'操作管理员账号',admin_id:'管理员编号',action:'操作',target:'操作目标',users:'累计用户数',parses:'解析次数',consumed_points:'实际消耗积分',subtitle_completed:'去字幕已结束任务',subtitle_success_rate:'去字幕成功率（%）',watermark_completed:'去水印已结束任务',watermark_success_rate:'去水印成功率（%）',transcript_success:'文案提取成功次数',transcript_url_success:'链接文案提取成功次数',transcript_upload_success:'上传文案提取成功次数',text_task_completed:'异步文案已结束任务',text_task_success_rate:'异步文案成功率（%）'};
+const columnMap:Record<string,string[]>={login_records:['ip','region','method','created'],users:['user_info','ip_info','member_info','share_parse_count','reserved','time_info'],parses:['openid','nickname','platform','scene','status','share_text','created'],resources:['resource_key','share_text','source_url','platform','output_mode','status','run_id','updated'],files:['resource_key','media_type','is_valid','upload_status','output_mode','run_id','file_size'],subtitle:['openid','nickname','status','progress','duration','error','created'],watermark:['openid','nickname','status','progress','duration','error','created'],points:['openid','nickname','source_label','balance_before','point_change','balance_after','status','created'],memberships:['openid','nickname','plan_code','starts','expires'],orders:['openid','nickname','order_type','status','amount_fen','points','created'],usage:['feature','day','used_count','reserved_count','used_ms'],logs:['admin_username','action','target','created']};
 const trashed=ref(false);const selected=ref<Row[]>([]);const recycleSaving=ref(false);
 const platformOptions=[
  {value:'douyin',label:'抖音 (douyin)'},{value:'xiaohongshu',label:'小红书 (xiaohongshu)'},
@@ -156,6 +162,10 @@ function platformTagStyle(value:unknown){
  return {'--el-tag-text-color':`hsl(${hue} 65% 45%)`,'--el-tag-bg-color':`hsl(${hue} 65% 50% / 10%)`,'--el-tag-border-color':`hsl(${hue} 65% 50% / 25%)`};
 }
 function show(key:string,value:unknown,row:Row={}):string {
+ if(key==='platform'){
+  const code=String(value||'').trim();
+  return platformOptions.find(item=>item.value===code.toLowerCase())?.label.split(' (')[0]||code||'未记录';
+ }
  if(key==='amount_fen'){
   if(value===null||value===undefined||value==='')return '—';
   const fen=Number(value);
@@ -285,15 +295,46 @@ watch(kind,()=>{trashed.value=false;selected.value=[];page.value=1;rows.value=[]
 <ElButton :loading="busy" type="primary" @click="search">查询</ElButton>
 <template v-if="kind==='parses'"><ElButton :disabled="busy||recycleSaving" @click="toggleRecycle">{{trashed?'返回解析记录':'回收站'}}</ElButton><ElButton v-if="canRecycle" :type="trashed?'primary':'danger'" :disabled="!selected.length||busy" :loading="recycleSaving" @click="changeRecycle(trashed?'restore':'delete',selected)">{{trashed?'批量恢复':'批量删除'}}（{{selected.length}}）</ElButton></template>
 </div>
-<template v-if="kind==='dashboard'"><ElAlert title="用户数为累计；其余指标按创建时间筛选。成功率仅统计成功和失败任务，排除取消、处理中及已过期任务。积分统计已结算的实际消费。" type="info" :closable="false" class="mb-4" /><div class="grid gap-4 md:grid-cols-4"><ElCard v-for="(value,key) in overview" :key="key"><div>{{labels[key]}}</div><div class="mt-4 text-3xl">{{value??'暂无数据'}}</div></ElCard></div></template>
-<ElCard v-else><ElAlert v-if="kind==='points'" title="余额为该笔操作发生时的总积分（含冻结部分）；历史流水未记录余额时显示 —。冻结、释放的总积分变动为 0。" type="info" :closable="false" class="mb-4" /><ElAlert v-if="kind==='parses'&&trashed" title="回收站：记录可恢复，关联视频和图片未删除。" type="info" :closable="false" class="mb-4" /><ElTable v-loading="busy||recycleSaving" :data="rows" :row-key="(row:Row)=>String(row.id||row.resource_key||row.openid)" stripe border empty-text="暂无记录" @selection-change="selected=$event"><ElTableColumn v-if="kind==='parses'&&canRecycle" type="selection" width="48" fixed="left" /><ElTableColumn v-if="['users','orders','points','memberships','parses','subtitle','watermark'].includes(kind)" label="头像" width="80"><template #default="{row}"><ElAvatar :size="44" :src="String(row.avatar_url||'')">用户</ElAvatar></template></ElTableColumn><ElTableColumn v-if="kind==='files'" label="预览" width="130"><template #default="s"><MediaFilePreview :file="s.row" compact /></template></ElTableColumn><ElTableColumn v-for="key in columns" :key="key" :label="labels[key]" :width="kind==='parses'&&parseColumnWidths[key]?parseColumnWidths[key]:key==='ledger_user_info'?340:undefined" :min-width="kind==='parses'&&parseColumnWidths[key]?parseColumnWidths[key]:['share_text','source_url'].includes(key)?360:key==='ledger_user_info'?340:key==='user_info'?280:key==='member_info'||key==='time_info'?210:key==='share_parse_count'?210:key==='openid'||key==='error'?220:150" :show-overflow-tooltip="!['ledger_user_info','user_info','member_info','time_info'].includes(key)"><template #header><ElTooltip v-if="key==='share_parse_count'" content="分别统计分享链接解析成功与失败次数，含回收站记录，不含处理中和文案提取" placement="top"><span class="cursor-help">{{labels[key]}} ⓘ</span></ElTooltip><ElTooltip v-else-if="key==='output_mode'" placement="top"><template #content><div style="max-width:360px;line-height:1.7"><p>{{modeHelp('cache')}}</p><p class="mt-2">{{modeHelp('direct')}}</p></div></template><span class="cursor-help" tabindex="0">{{labels[key]}} ⓘ</span></ElTooltip><span v-else>{{labels[key]}}</span></template><template #default="s"><div v-if="key==='ledger_user_info'" class="ledger-user-info"><CopyValue :value="s.row.openid" label="复制用户 OpenId" /><span class="ledger-user-nickname" :title="show('nickname',s.row.nickname)">{{show('nickname',s.row.nickname)}}</span></div><div v-else-if="key==='user_info'" class="user-info-lines">
+<template v-if="kind==='dashboard'">
+ <ElAlert title="除累计用户数外，各项指标按对应记录的创建时间筛选；结果记录与任务记录的创建时间可能不同。" type="info" :closable="false" class="mb-4" />
+ <div v-loading="busy" class="overview-groups">
+  <ElCard v-for="group in overviewGroups" :key="group.id" shadow="never" class="overview-group" :class="{'overview-group-wide':['general','transcripts'].includes(group.id)}">
+   <template #header><h3 class="overview-group-title">{{group.title}}</h3></template>
+   <p class="overview-group-description">{{group.description}}</p>
+   <template v-if="group.id==='transcripts'">
+    <div class="overview-transcript-total">
+     <div class="overview-metric-label">文案提取总成功次数</div>
+     <div class="overview-metric-value">{{overview.transcript_success??'暂无数据'}}</div>
+     <div class="overview-transcript-parts">
+      <span>其中：链接 <strong>{{overview.transcript_url_success??'—'}}</strong> 次</span>
+      <span>上传 <strong>{{overview.transcript_upload_success??'—'}}</strong> 次</span>
+     </div>
+    </div>
+    <div class="overview-metrics">
+     <div v-for="key in ['text_task_completed','text_task_success_rate']" :key="key" class="overview-metric">
+      <div class="overview-metric-label">{{labels[key]}}</div>
+      <div class="overview-metric-value">{{overview[key]??'暂无数据'}}</div>
+     </div>
+    </div>
+   </template>
+   <div v-else class="overview-metrics" :class="{'overview-metrics-three':group.metrics.length>2}">
+    <div v-for="key in group.metrics" :key="key" class="overview-metric">
+     <div class="overview-metric-label">{{labels[key]}}</div>
+     <div class="overview-metric-value">{{overview[key]??'暂无数据'}}</div>
+    </div>
+   </div>
+  </ElCard>
+ </div>
+</template>
+<ElCard v-else><ElAlert v-if="kind==='points'" title="余额为该笔操作发生时的总积分（含冻结部分）；历史流水未记录余额时显示 —。冻结、释放的总积分变动为 0。" type="info" :closable="false" class="mb-4" /><ElAlert v-if="kind==='parses'&&trashed" title="回收站：记录可恢复，关联视频和图片未删除。" type="info" :closable="false" class="mb-4" /><ElTable v-loading="busy||recycleSaving" :data="rows" :row-key="(row:Row)=>String(row.id||row.resource_key||row.openid)" stripe border empty-text="暂无记录" @selection-change="selected=$event"><ElTableColumn v-if="kind==='parses'&&canRecycle" type="selection" width="48" fixed="left" /><ElTableColumn v-if="['users','orders','points','memberships','parses','subtitle','watermark'].includes(kind)" label="头像" width="80"><template #default="{row}"><ElAvatar :size="44" :src="String(row.avatar_url||'')">用户</ElAvatar></template></ElTableColumn><ElTableColumn v-if="kind==='files'" label="预览" width="130"><template #default="s"><MediaFilePreview :file="s.row" compact /></template></ElTableColumn><ElTableColumn v-for="key in columns" :key="key" :label="labels[key]" :width="kind==='parses'&&parseColumnWidths[key]?parseColumnWidths[key]:key==='ledger_user_info'?340:undefined" :min-width="kind==='parses'&&parseColumnWidths[key]?parseColumnWidths[key]:['share_text','source_url'].includes(key)?360:key==='ledger_user_info'?340:key==='user_info'?360:key==='ip_info'?220:key==='member_info'||key==='time_info'?210:key==='share_parse_count'?210:key==='openid'||key==='error'?220:150" :show-overflow-tooltip="!['ledger_user_info','user_info','ip_info','member_info','time_info'].includes(key)"><template #header><ElTooltip v-if="key==='share_parse_count'" content="分别统计分享链接解析成功与失败次数，含回收站记录，不含处理中和文案提取" placement="top"><span class="cursor-help">{{labels[key]}} ⓘ</span></ElTooltip><ElTooltip v-else-if="key==='output_mode'" placement="top"><template #content><div style="max-width:360px;line-height:1.7"><p>{{modeHelp('cache')}}</p><p class="mt-2">{{modeHelp('direct')}}</p></div></template><span class="cursor-help" tabindex="0">{{labels[key]}} ⓘ</span></ElTooltip><span v-else>{{labels[key]}}</span></template><template #default="s"><div v-if="key==='ledger_user_info'" class="ledger-user-info"><CopyValue :value="s.row.openid" label="复制用户 OpenId" /><span class="ledger-user-nickname" :title="show('nickname',s.row.nickname)">{{show('nickname',s.row.nickname)}}</span></div><div v-else-if="key==='user_info'" class="user-info-lines">
 <div><span class="user-info-label">OpenId：</span><CopyValue class="user-info-value" :value="s.row.openid" label="复制用户 OpenId" /></div>
 <div><span class="user-info-label">昵称：</span><span class="user-info-value user-info-ellipsis" :title="show('nickname',s.row.nickname)">{{show('nickname',s.row.nickname)}}</span></div>
+<div><span class="user-info-label">积分余额：</span><span class="user-stat user-stat-balance">{{s.row.balance ?? 0}}</span></div>
+</div><div v-else-if="key==='ip_info'" class="user-info-lines">
 <div><span class="user-info-label">注册 IP：</span><CopyValue :value="s.row.register_ip" label="复制注册 IP" /></div>
 <div class="user-info-ellipsis" :title="String(s.row.register_region||'未知')"><span class="user-info-label">注册地区：</span>{{s.row.register_region||'未知'}}</div>
 <div><span class="user-info-label">最新 IP：</span><CopyValue :value="s.row.last_login_ip" label="复制最新登录 IP"><ElButton v-if="s.row.last_login_ip" link type="primary" title="查看登录历史" style="white-space:normal;overflow-wrap:anywhere;height:auto;text-align:left" @click="openLoginHistory(s.row)">{{s.row.last_login_ip}}</ElButton><span v-else>—</span></CopyValue></div>
 <div class="user-info-ellipsis" :title="String(s.row.last_login_region||'未知')"><span class="user-info-label">最新地区：</span>{{s.row.last_login_region||'未知'}}</div>
-<div><span class="user-info-label">积分余额：</span><span class="user-stat user-stat-balance">{{s.row.balance ?? 0}}</span></div>
 </div><div v-else-if="key==='member_info'" class="user-info-lines">
 <div><span class="user-info-label">状态：</span><ElTag class="user-member-tag" :effect="s.row.is_vip?'dark':'light'" :type="s.row.is_vip?'warning':'info'">{{show('is_vip',s.row.is_vip,s.row)}}</ElTag></div>
 <div><span class="user-info-label">套餐：</span><span class="user-info-value user-info-ellipsis" :title="show('plan_name',s.row.plan_name)">{{show('plan_name',s.row.plan_name)}}</span></div>
@@ -362,6 +403,23 @@ watch(kind,()=>{trashed.value=false;selected.value=[];page.value=1;rows.value=[]
 </template>
 
 <style scoped>
+.overview-groups { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.overview-group-wide { grid-column:1 / -1; }
+.overview-group-title { margin:0; font-size:16px; font-weight:600; }
+.overview-group-description { margin:0 0 16px; color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; }
+.overview-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.overview-metrics-three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.overview-metric { padding:16px; border-radius:8px; background:var(--el-fill-color-light); }
+.overview-metric-label { color:var(--el-text-color-secondary); font-size:13px; }
+.overview-metric-value { margin-top:10px; font-size:28px; font-weight:600; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.overview-transcript-total { margin-bottom:12px; padding:20px; border-radius:8px; background:var(--el-color-primary-light-9); }
+.overview-transcript-total .overview-metric-value { color:var(--el-color-primary); font-size:36px; }
+.overview-transcript-parts { display:flex; flex-wrap:wrap; gap:8px 24px; margin-top:12px; color:var(--el-text-color-secondary); font-size:14px; }
+.overview-transcript-parts strong { color:var(--el-text-color-primary); font-variant-numeric:tabular-nums; }
+@media (max-width:767px) {
+ .overview-groups,.overview-metrics,.overview-metrics-three { grid-template-columns:1fr; }
+}
+
 .history-share-copy { display:flex; align-items:center; width:100%; min-width:0; white-space:nowrap; }
 .history-share-text { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .history-share-copy :deep(.copy-icon) { flex-shrink:0; }
