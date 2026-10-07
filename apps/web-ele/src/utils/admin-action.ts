@@ -6,6 +6,7 @@ export function adminActionLabel(value:unknown):string {
   'config.membership-plans.reorder':'调整会员套餐排序',
   'config.entitlements.reorder':'调整套餐权益排序',
   'users.delete':'永久删除用户','users.delete_failed':'删除用户失败',
+  'users.login-record.region-recheck':'补查登录 IP 归属地','users.login-records.delete':'删除登录记录',
   'storage.upload.delete':'删除上传记录',
   'points.grant':'人工发放积分','points.deduct':'人工扣除积分','membership.grant':'人工开通会员','membership.cancel':'人工取消会员',
   'task.retry':'重试视频任务','task.cancel':'取消视频任务','parses.delete':'删除解析记录','parses.restore':'恢复解析记录',
