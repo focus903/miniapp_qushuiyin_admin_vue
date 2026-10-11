@@ -14,6 +14,7 @@ interface ErrorEntry {
   request_context?: {
     request_url?: string; user_id?: string | null; platform?: string;
     duration_ms?: number; stage?: string; body?: unknown; query?: unknown;
+    order_id?: string; payment_env?: number;
   } | null;
 }
 interface Health {
@@ -50,6 +51,7 @@ const stages: Record<string, string> = {
   benefit_check: '权益检查', parse_and_output: '平台解析及媒体输出',
   parse_and_transcribe: '链接解析及音频转文字', transcript_record: '文案记录保存',
   parse_request: '解析请求', request_context_unavailable: '请求上下文采集失败',
+  payment_query: '微信支付查单',
 };
 function clearSelection() { checkedIds.value = []; table.value?.clearSelection(); }
 function selectionChanged(entries: ErrorEntry[]) { checkedIds.value = entries.map(entry => entry.id); }
@@ -186,7 +188,9 @@ onMounted(load);
           <template v-if="selected.request_context">
             <div class="detail-heading"><h3>请求完整地址（已脱敏）</h3><ElButton v-if="selected.request_context.request_url" link type="primary" @click="copyText(selected.request_context.request_url)">复制地址</ElButton></div>
             <pre>{{ selected.request_context.request_url || '未记录' }}</pre>
-            <p>平台：{{ selected.request_context.platform || '未识别' }} · 用户 ID：{{ selected.request_context.user_id || '未取得' }} · 耗时：{{ selected.request_context.duration_ms ?? '未知' }} ms</p>
+            <p v-if="selected.request_context.stage === 'payment_query'">用户 openid：{{ selected.request_context.user_id || '未取得' }}</p>
+            <p v-else>平台：{{ selected.request_context.platform || '未识别' }} · 用户 ID：{{ selected.request_context.user_id || '未取得' }} · 耗时：{{ selected.request_context.duration_ms ?? '未知' }} ms</p>
+            <p v-if="selected.request_context.order_id">订单号：{{ selected.request_context.order_id }} · 支付环境：{{ selected.request_context.payment_env === 0 ? '现网' : selected.request_context.payment_env === 1 ? '沙箱' : '未取得' }}</p>
             <p>失败阶段：{{ stages[selected.request_context.stage || ''] || selected.request_context.stage || '未知' }}</p>
             <div class="detail-heading"><h3>请求参数（已脱敏）</h3><ElButton v-if="selected.request_context.body != null || selected.request_context.query != null" link type="primary" @click="copyText(requestParameters(selected))">复制参数</ElButton></div>
             <pre>{{ requestParameters(selected) }}</pre>

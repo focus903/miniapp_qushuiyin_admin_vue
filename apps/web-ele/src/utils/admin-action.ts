@@ -7,6 +7,7 @@ export function adminActionLabel(value:unknown):string {
   'config.entitlements.reorder':'调整套餐权益排序',
   'users.delete':'永久删除用户','users.delete_failed':'删除用户失败',
   'users.login-record.region-recheck':'补查登录 IP 归属地','users.login-records.delete':'删除登录记录',
+  'users.development.update':'设置开发者账号',
   'storage.upload.delete':'删除上传记录',
   'files.delete':'删除关联文件','resources.delete':'删除共享资源及关联文件','resources.delete_failed':'共享资源清理未完成',
   'points.grant':'人工发放积分','points.deduct':'人工扣除积分','membership.grant':'人工开通会员','membership.cancel':'人工取消会员',

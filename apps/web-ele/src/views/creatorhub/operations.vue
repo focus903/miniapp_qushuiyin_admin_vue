@@ -6,7 +6,7 @@ import { computed, onDeactivated, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
-import { ElDropdown,ElDropdownMenu,ElDropdownItem,ElAvatar,ElAlert,ElButton,ElCard,ElDescriptions,ElDescriptionsItem,ElDialog,ElForm,ElFormItem,ElInput,ElInputNumber,ElMessage,ElMessageBox,ElOption,ElPagination,ElSelect,ElTable,ElTableColumn,ElTabs,ElTabPane,ElTag,ElTooltip } from 'element-plus';
+import { ElDropdown,ElDropdownMenu,ElDropdownItem,ElAvatar,ElAlert,ElButton,ElCard,ElDescriptions,ElDescriptionsItem,ElDialog,ElForm,ElFormItem,ElInput,ElInputNumber,ElMessage,ElMessageBox,ElOption,ElPagination,ElSelect,ElSwitch,ElTable,ElTableColumn,ElTabs,ElTabPane,ElTag,ElTooltip } from 'element-plus';
 import { requestClient } from '#/api/request';
 import ParseDetail from './parse-detail.vue';
 import MediaFilePreview from './media-file-preview.vue';
@@ -16,6 +16,21 @@ type Row=Record<string,unknown>;
 type Result={items:Row[];total:number};
 const route=useRoute();const access=useAccessStore();
 const resource=computed(()=>String(route.meta.resource||'dashboard'));
+const developmentSaving=ref<Record<string,boolean>>({});
+async function toggleDevelopment(row:Row):Promise<boolean>{
+ const openid=String(row.openid||'');
+ if(!openid||developmentSaving.value[openid]||!access.accessCodes.includes('users:development'))return false;
+ const development=!(row.development===true||Number(row.development)===1);
+ try{await ElMessageBox.confirm(development?'设为开发者后，该用户可在小程序更新服务端元宝 Cookie，并沿用开发者账号不能发起虚拟支付的规则。':'取消开发者后，该用户不能再更新元宝 Cookie，等待中的扫码会话将被取消。','确认'+(development?'设置':'取消')+'开发者账号',{type:'warning'});}catch{return false;}
+ developmentSaving.value[openid]=true;
+ try{
+  const result=await requestClient.put<{openid:string;development:boolean}>(`/users/${encodeURIComponent(openid)}/development`,{development});
+  row.development=result.development;
+  if(detailName.value==='users'&&detail.value.openid===openid)detail.value.development=result.development;
+  ElMessage.success('开发者状态已更新，小程序刷新“我的”页面后更新入口');
+  return true;
+ }catch{return false;}finally{developmentSaving.value[openid]=false;}
+}
 const kind=ref('');const page=ref(1);const size=ref(20);const rows=ref<Row[]>([]);const total=ref(0);const busy=ref(false);const error=ref('');const dates=ref<[Date,Date]|null>(null);
 const filters=ref({openid:'',status:'',platform:'',output_mode:'',run_id:'',resource_key:'',feature:'',is_valid:''});
 const loginHistoryOpen=ref(false),loginHistoryOwner=ref('');
@@ -382,6 +397,7 @@ watch(kind,()=>{trashed.value=false;selected.value=[];page.value=1;rows.value=[]
 <div><span class="user-info-label">OpenId：</span><CopyValue class="user-info-value" :value="s.row.openid" label="复制用户 OpenId" /></div>
 <div><span class="user-info-label">昵称：</span><span class="user-info-value user-info-ellipsis" :title="show('nickname',s.row.nickname)">{{show('nickname',s.row.nickname)}}</span></div>
 <div><span class="user-info-label">积分余额：</span><span class="user-stat user-stat-balance">{{s.row.balance ?? 0}}</span></div>
+<div><span class="user-info-label">开发者账号：</span><ElSwitch :model-value="s.row.development===true||Number(s.row.development)===1" active-text="是" inactive-text="否" inline-prompt :loading="developmentSaving[String(s.row.openid)]" :disabled="busy||!access.accessCodes.includes('users:development')" :before-change="()=>toggleDevelopment(s.row)" aria-label="开发者账号" /></div>
 </div><div v-else-if="key==='ip_info'" class="user-info-lines">
 <div><span class="user-info-label">注册 IP：</span><CopyValue :value="s.row.register_ip" label="复制注册 IP" /></div>
 <div class="user-info-ellipsis" :title="String(s.row.register_region||'未知')"><span class="user-info-label">注册地区：</span>{{s.row.register_region||'未知'}}</div>
