@@ -76,16 +76,17 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
 <ElForm class="miniapp-config-form" label-position="top" :disabled="!canSave||saving">
 <ElTabs v-model="configTab">
  <ElTabPane v-for="group in configLayout" :key="group.id" :label="group.label" :name="group.code">
+  <ElAlert v-if="group.code==='notifications'" title="关闭固定版本：匹配用户授权时的小程序版本。开启：统一使用指定版本。旧任务或缺少有效版本时使用指定版本兜底；修改不会改变已发送的通知。" type="info" :closable="false" class="mb-4" />
   <div v-if="group.fields.length" class="config-grid">
-  <AppConfigField v-for="field in group.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
-   <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
+  <AppConfigField v-for="field in group.fields.filter(item=>item.key!=='wxTaskMessageStateFixed')" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
+   <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <span v-if="field.key==='wxTaskMessageState'" class="ml-3 inline-flex items-center gap-2 text-sm"><ElSwitch :model-value="config.wxTaskMessageStateFixed===true" @update:model-value="value=>config.wxTaskMessageStateFixed=Boolean(value)" />固定使用此版本</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
   </AppConfigField>
   </div>
   <div v-if="group.children.length" class="grid gap-4 md:grid-cols-2">
    <ElCard v-for="child in group.children" :key="child.id" class="config-section" :data-config-group="child.code" shadow="never" :header="child.label">
     <div class="config-grid">
     <AppConfigField v-for="field in child.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
-     <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
+     <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <span v-if="field.key==='wxTaskMessageState'" class="ml-3 inline-flex items-center gap-2 text-sm"><ElSwitch :model-value="config.wxTaskMessageStateFixed===true" @update:model-value="value=>config.wxTaskMessageStateFixed=Boolean(value)" />固定使用此版本</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
     </AppConfigField>
     </div>
    </ElCard>
