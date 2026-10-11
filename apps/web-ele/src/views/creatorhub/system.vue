@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PermissionTree from '#/components/permission-tree.vue';
+import WechatCookie from '#/components/wechat-cookie.vue';
 import AppConfigField from '#/components/app-config-field.vue';
 import { configTabs } from '#/utils/app-config-layout';
 import type { ConfigSchema, ConfigValues } from '#/utils/app-config-layout';
@@ -20,6 +21,7 @@ const admins=ref<Admin[]>([]);const roles=ref<Role[]>([]);const permissions=ref<
 const tab=ref('admins');const userDialog=ref(false);const roleDialog=ref(false);const editingId=ref('');
 const userForm=ref({username:'',password:'',enabled:1,roles:[] as string[]});const roleForm=ref<Role>({code:'',name:'',permissions:[]});const editingRole=ref(false);
 const configTab=ref('');
+const wechatCookieDialog=ref(false);
 const configGeneration=ref(0);
 const configLayout=ref<ReturnType<typeof configTabs>>([]);
 const invalidFields=ref<Record<string,boolean>>({});
@@ -55,12 +57,16 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
 <ElTabs v-model="configTab">
  <ElTabPane v-for="group in configLayout" :key="group.id" :label="group.label" :name="group.code">
   <div v-if="group.fields.length" class="config-grid">
-  <AppConfigField v-for="field in group.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid" />
+  <AppConfigField v-for="field in group.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
+   <template #label>{{ field.label }} <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
+  </AppConfigField>
   </div>
   <div v-if="group.children.length" class="grid gap-4 md:grid-cols-2">
    <ElCard v-for="child in group.children" :key="child.id" class="config-section" :data-config-group="child.code" shadow="never" :header="child.label">
     <div class="config-grid">
-    <AppConfigField v-for="field in child.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid" />
+    <AppConfigField v-for="field in child.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
+     <template #label>{{ field.label }} <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
+    </AppConfigField>
     </div>
    </ElCard>
   </div>
@@ -78,6 +84,9 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
 <ElTabPane v-if="route.meta.resource==='roles'" label="角色权限" name="roles"><ElButton v-if="canSave" type="primary" class="mb-4" @click="editRole()">新增角色</ElButton><ElTable :data="roles" empty-text="暂无角色"><ElTableColumn prop="name" label="角色"/><ElTableColumn prop="code" label="代码"/><ElTableColumn label="权限数量"><template #default="{row}">{{row.permissions.length}}</template></ElTableColumn><ElTableColumn label="操作"><template #default="{row}"><ElButton v-if="canSave" link :disabled="row.code==='superadmin'" @click="editRole(row as Role)">{{row.code==='superadmin'?'内置角色':'编辑权限'}}</ElButton></template></ElTableColumn></ElTable></ElTabPane>
 </ElTabs>
 </ElCard>
+<ElDialog v-if="isConfig" v-model="wechatCookieDialog" title="微信视频号 Cookie 配置" width="min(1100px, 94vw)" top="5vh" destroy-on-close>
+ <WechatCookie v-if="wechatCookieDialog" :can-save="canSave" />
+</ElDialog>
 <ElDialog v-model="userDialog" :title="editingId?'编辑管理员':'新增管理员'" width="560px" @closed="userForm.password=''">
 <ElForm label-width="100px"><ElFormItem label="账号"><ElInput v-model="userForm.username" maxlength="64" autocomplete="off"/></ElFormItem><ElFormItem :label="editingId?'新密码':'密码'"><ElInput v-model="userForm.password" type="password" show-password autocomplete="new-password" :placeholder="editingId?'留空不修改；至少6位':'至少6位'"/></ElFormItem><ElFormItem label="启用"><ElSwitch v-model="userForm.enabled" :active-value="1" :inactive-value="0"/></ElFormItem><ElFormItem label="角色"><ElSelect v-model="userForm.roles" multiple style="width:100%"><ElOption v-for="role in roles" :key="role.code" :label="role.name" :value="role.code"/></ElSelect></ElFormItem></ElForm><template #footer><ElButton @click="userDialog=false">取消</ElButton><ElButton type="primary" :loading="saving" @click="saveUser">保存</ElButton></template></ElDialog>
 <ElDialog v-model="roleDialog" title="角色与权限" width="620px"><ElForm label-width="100px"><ElFormItem label="角色代码"><ElInput v-model="roleForm.code" :disabled="editingRole" placeholder="3至64位小写英文、数字、下划线"/></ElFormItem><ElFormItem label="中文名称"><ElInput v-model="roleForm.name" maxlength="100"/></ElFormItem><ElFormItem label="权限"><PermissionTree v-if="roleDialog" v-model="roleForm.permissions" :permissions="permissions" /></ElFormItem></ElForm><template #footer><ElButton @click="roleDialog=false">取消</ElButton><ElButton type="primary" :loading="saving" @click="saveRole">保存</ElButton></template></ElDialog>

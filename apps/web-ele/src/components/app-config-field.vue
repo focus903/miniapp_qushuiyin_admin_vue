@@ -38,6 +38,7 @@ function changeCalendar(value:string|null){
 
 <template>
  <ElFormItem :class="{'config-switch':field.control==='switch','config-default-output':field.key==='videoOutputMode'}" :label="field.label" :error="mappingError||undefined">
+  <template #label><slot name="label">{{ field.label }}</slot></template>
   <div class="config-field">
    <ElSwitch v-if="field.control==='switch'" :model-value="modelValue===true" @update:model-value="value=>emit('update:modelValue',Boolean(value))" />
    <ElInputNumber v-else-if="field.control==='number'" :model-value="typeof modelValue==='number'?modelValue:undefined" @update:model-value="value=>emit('update:modelValue',value??0)" />
