@@ -7,6 +7,7 @@ import type { ConfigSchema, ConfigValues } from '#/utils/app-config-layout';
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Page } from '@vben/common-ui';
+import { IconifyIcon } from '@vben/icons';
 import { useAccessStore } from '@vben/stores';
 import { ElAlert, ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInput, ElMessage, ElMessageBox, ElOption, ElPagination, ElSelect, ElSwitch, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus';
 import { requestClient } from '#/api/request';
@@ -21,6 +22,20 @@ const admins=ref<Admin[]>([]);const roles=ref<Role[]>([]);const permissions=ref<
 const tab=ref('admins');const userDialog=ref(false);const roleDialog=ref(false);const editingId=ref('');
 const userForm=ref({username:'',password:'',enabled:1,roles:[] as string[]});const roleForm=ref<Role>({code:'',name:'',permissions:[]});const editingRole=ref(false);
 const configTab=ref('');
+const outputIcons:Record<string,{icon:string;color:string}>={
+ videoOutputMode:{icon:'mdi:video',color:'var(--el-color-primary)'},
+ wechatOutputMode:{icon:'simple-icons:wechat',color:'#07c160'},
+ douyinOutputMode:{icon:'simple-icons:tiktok',color:'var(--el-text-color-primary)'},
+ xiaohongshuOutputMode:{icon:'simple-icons:xiaohongshu',color:'#ff2442'},
+ bilibiliOutputMode:{icon:'simple-icons:bilibili',color:'#fb7299'},
+ kuaishouOutputMode:{icon:'simple-icons:kuaishou',color:'#ff4906'},
+ xiguaOutputMode:{icon:'icon-park-outline:xigua',color:'#f5222d'},
+ toutiaoOutputMode:{icon:'icon-park-outline:jinritoutiao',color:'#ed4040'},
+ weiboOutputMode:{icon:'simple-icons:sinaweibo',color:'#e6162d'},
+ dongchediOutputMode:{icon:'icon-park-outline:dongchedi',color:'#e6a23c'},
+ pipixiaOutputMode:{icon:'icon-park-outline:shrimp',color:'#ff7a45'},
+ youtubeOutputMode:{icon:'simple-icons:youtube',color:'#ff0000'},
+};
 const wechatCookieDialog=ref(false);
 const configGeneration=ref(0);
 const configLayout=ref<ReturnType<typeof configTabs>>([]);
@@ -28,7 +43,12 @@ const invalidFields=ref<Record<string,boolean>>({});
 async function load(){busy.value=true;error.value='';try{
  if(isConfig.value){
   const [values,schema]=await Promise.all([requestClient.get<Config>('/system/app-config'),requestClient.get<ConfigSchema>('/system/app-config/schema')]);
-  const layout=configTabs(schema);config.value=values;configLayout.value=layout;invalidFields.value={};configGeneration.value++;
+  const layout=configTabs(schema);
+  const outputRank=(key:string)=>key==='videoOutputMode'?0:key==='wechatOutputMode'?1:2;
+  for(const group of layout.filter(item=>item.code==='video_output')){
+    for(const section of [group,...group.children])section.fields.sort((a,b)=>outputRank(a.key)-outputRank(b.key));
+  }
+  config.value=values;configLayout.value=layout;invalidFields.value={};configGeneration.value++;
   if(!layout.some(group=>group.code===configTab.value))configTab.value=layout[0]?.code||'';
  }
  else if(route.meta.resource==='admins'){const users=await requestClient.get<{items:Admin[];total:number}>('/system/admins',{params:{page:page.value,keyword:keyword.value,enabled:enabled.value}});admins.value=users.items;total.value=users.total;if(access.accessCodes.includes('admins:create')||access.accessCodes.includes('admins:update'))roles.value=await requestClient.get<Role[]>('/system/roles');}
@@ -58,14 +78,14 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
  <ElTabPane v-for="group in configLayout" :key="group.id" :label="group.label" :name="group.code">
   <div v-if="group.fields.length" class="config-grid">
   <AppConfigField v-for="field in group.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
-   <template #label>{{ field.label }} <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
+   <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
   </AppConfigField>
   </div>
   <div v-if="group.children.length" class="grid gap-4 md:grid-cols-2">
    <ElCard v-for="child in group.children" :key="child.id" class="config-section" :data-config-group="child.code" shadow="never" :header="child.label">
     <div class="config-grid">
     <AppConfigField v-for="field in child.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
-     <template #label>{{ field.label }} <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
+     <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
     </AppConfigField>
     </div>
    </ElCard>
