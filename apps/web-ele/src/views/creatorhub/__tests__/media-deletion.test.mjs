@@ -14,6 +14,7 @@ function setup(resource='files'){
  const requestClient={get:async(url)=>{reads.push(url);return {items:[],total:0};},post:async(url,body)=>{calls.push({url,body});return {requested:body.ids.length,deleted:body.ids.length,deleted_ids:body.ids,deleted_files:body.ids.length,failed:[]};}};
  const ElMessageBox={confirm:async()=>{}};
  const mocks={vue:{...vue,onUnmounted(){},onDeactivated(){}},'vue-router':{useRoute:()=>route},'@vben/stores':{useAccessStore:()=>access},'#/api/request':{requestClient},'element-plus':{ElMessageBox,ElMessage:{success:value=>messages.push(value),error:value=>messages.push(value),warning:value=>messages.push(value)}}};
+ mocks['#/utils/business-record-deletion']={useBusinessRecordDeletion:()=>({allowed:vue.ref(false),busy:vue.ref(false),error:vue.ref(''),reset(){}})};
  const exports={};runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require:name=>mocks[name]||{},console,Error});
  return {...exports.api,access,route,requestClient,calls,messages,reads,ElMessageBox};
 }

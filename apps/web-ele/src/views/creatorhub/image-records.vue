@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElAlert, ElButton, ElDialog, ElInput, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus';
 import { requestClient } from '#/api/request';
+import { useBusinessRecordDeletion } from '#/utils/business-record-deletion';
 interface ImageRecord {
   id:string;openid:string;kind:string;status:string;created:number;finished:number;expires:number;duration_ms:number;
   input_width:number;input_height:number;input_size:number;result_size:number;result_width:number;result_height:number;error:string;storage_note:string;
@@ -18,9 +19,11 @@ const statuses:Record<string,string>={running:'处理中',completed:'成功',fai
 const rows=ref<ImageRecord[]>([]);const page=ref(1);const total=ref(0);const kind=ref(routeKind.value);const status=ref('');const openid=ref('');
 const busy=ref(false);const error=ref('');const dialog=ref(false);const detail=ref<Preview>();const previewBusy=ref(false);const previewError=ref('');
 const inputFailed=ref(false);const resultFailed=ref(false);let generation=0;let previewGeneration=0;
+let active=true;
 const timeText=(value:number)=>value?new Date(value*1000).toLocaleString():'—';
 const sizeText=(value:number)=>value?`${(value/1024/1024).toFixed(2)} MB`:'—';
 async function load(){
+  if(!active)return;
   const current=++generation;busy.value=true;error.value='';
   try{const data=await requestClient.get<{items:ImageRecord[];total:number}>('/image-records',{params:{page:page.value,page_size:20,kind:kind.value||undefined,status:status.value||undefined,openid:openid.value.trim()||undefined}});
     if(current===generation){rows.value=data.items;total.value=data.total;}
@@ -28,18 +31,25 @@ async function load(){
   finally{if(current===generation)busy.value=false;}
 }
 function search(){page.value=1;void load();}
+const deletion=useBusinessRecordDeletion(()=> 'image-records',async()=>{
+ dialog.value=false;closePreview();await load();if(page.value>1&&!rows.value.length){page.value--;await load();}
+});
+const {allowed:canDelete,selected:deleteSelection,busy:deleteBusy,error:deleteError}=deletion;
 function selectKind(value:string){if(paths[value])void router.push(paths[value]);}
 function closePreview(){previewGeneration++;detail.value=undefined;previewBusy.value=false;previewError.value='';}
 function mediaUrl(value:string){try{const url=new URL(value);return ['http:','https:'].includes(url.protocol)?value:'';}catch{return '';}}
 async function view(row:ImageRecord){
+  if(!active)return;
   const current=++previewGeneration;dialog.value=true;previewBusy.value=true;detail.value=undefined;previewError.value='';inputFailed.value=false;resultFailed.value=false;
   try{const data=await requestClient.post<Preview>(`/image-records/${encodeURIComponent(row.id)}/preview`,{});
     if(current===previewGeneration)detail.value={...data,input_url:mediaUrl(data.input_url),result_url:mediaUrl(data.result_url)};
   }catch(cause){if(current===previewGeneration)previewError.value=cause instanceof Error?cause.message:'详情加载失败';}
   finally{if(current===previewGeneration)previewBusy.value=false;}
 }
-watch(routeKind,(value)=>{kind.value=value;dialog.value=false;closePreview();search();});
-onMounted(()=>void load());onBeforeUnmount(()=>{generation++;closePreview();});
+watch(routeKind,(value)=>{kind.value=value;dialog.value=false;closePreview();deletion.reset();search();});
+function stop(){active=false;generation++;dialog.value=false;closePreview();deletion.reset();}
+onMounted(()=>void load());onBeforeUnmount(stop);onDeactivated(stop);
+onActivated(()=>{if(!active){active=true;void load();}});
 </script>
 
 <template>
@@ -50,9 +60,12 @@ onMounted(()=>void load());onBeforeUnmount(()=>{generation++;closePreview();});
       <ElSelect v-model="status" placeholder="全部状态" clearable @change="search"><ElOption v-for="(label,value) in statuses" :key="value" :label="label" :value="value" /></ElSelect>
       <ElInput v-model="openid" placeholder="用户OpenID（精确查询）" clearable @keyup.enter="search" />
       <ElButton type="primary" :loading="busy" @click="search">查询</ElButton><ElButton :loading="busy" @click="load">刷新</ElButton>
+      <ElButton v-if="canDelete" type="danger" plain :disabled="!deleteSelection.length||busy||deleteBusy" @click="deletion.remove(deleteSelection.map(row=>String(row.id)))">删除所选（{{deleteSelection.length}}）</ElButton>
     </div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
-    <ElTable v-loading="busy" :data="rows" row-key="id" empty-text="暂无图片处理记录">
+    <ElAlert v-if="deleteError" :title="deleteError" type="warning" :closable="false" class="mb-3 whitespace-pre-wrap" />
+    <ElTable v-loading="busy" :data="rows" row-key="id" empty-text="暂无图片处理记录" @selection-change="deleteSelection=$event">
+      <ElTableColumn v-if="canDelete" type="selection" width="48" fixed="left" />
       <ElTableColumn prop="id" label="记录编号" min-width="150" show-overflow-tooltip />
       <ElTableColumn prop="openid" label="用户OpenID" min-width="160" show-overflow-tooltip />
       <ElTableColumn label="类型" width="125"><template #default="{row}">{{kinds[row.kind]||row.kind}}</template></ElTableColumn>
@@ -61,7 +74,7 @@ onMounted(()=>void load());onBeforeUnmount(()=>{generation++;closePreview();});
       <ElTableColumn label="结果大小" width="100"><template #default="{row}">{{sizeText(row.result_size)}}</template></ElTableColumn>
       <ElTableColumn label="耗时" width="90"><template #default="{row}">{{(row.duration_ms/1000).toFixed(2)}}秒</template></ElTableColumn>
       <ElTableColumn label="创建时间" width="175"><template #default="{row}">{{timeText(row.created)}}</template></ElTableColumn>
-      <ElTableColumn label="操作" width="100" fixed="right"><template #default="{row}"><ElButton link type="primary" @click="view(row as ImageRecord)">查看详情</ElButton></template></ElTableColumn>
+      <ElTableColumn label="操作" width="165" fixed="right"><template #default="{row}"><ElButton link type="primary" @click="view(row as ImageRecord)">查看详情</ElButton><ElButton v-if="canDelete" link type="danger" :disabled="row.status==='running'||busy||deleteBusy" @click="deletion.remove([String(row.id)])">删除</ElButton></template></ElTableColumn>
     </ElTable>
     <ElPagination v-model:current-page="page" :total="total" :page-size="20" layout="total, prev, pager, next" class="mt-4" @current-change="load" />
     <ElDialog v-model="dialog" title="图片处理详情" width="min(1100px, 96vw)" destroy-on-close @closed="closePreview">

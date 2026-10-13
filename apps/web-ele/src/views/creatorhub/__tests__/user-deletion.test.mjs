@@ -11,6 +11,7 @@ function setup(){
  const access=vue.reactive({accessCodes:['users:delete']});const route=vue.reactive({meta:{resource:'users'},query:{},fullPath:'/users'});const calls=[];
  const requestClient={get:async()=>preview(),post:async(url,body)=>{calls.push({url,body});return {deleted:true,openid:'user/a'};}};
  const mocks={vue:{...vue,onUnmounted(){},onDeactivated(){}},'vue-router':{useRoute:()=>route},'@vben/stores':{useAccessStore:()=>access},'#/api/request':{requestClient},'element-plus':{ElMessage:{success(){},error(){},warning(){}}}};
+ mocks['#/utils/business-record-deletion']={useBusinessRecordDeletion:()=>({allowed:vue.ref(false),busy:vue.ref(false),error:vue.ref(''),reset(){}})};
  const exports={};runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require:name=>mocks[name]||{},console,Error});
  return {...exports.api,access,route,requestClient,calls};
 }

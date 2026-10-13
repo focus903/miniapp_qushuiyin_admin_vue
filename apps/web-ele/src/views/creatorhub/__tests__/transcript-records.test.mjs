@@ -10,7 +10,7 @@ function setup(){
  const source=text.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]+'\nexports.api={load,openDetail,stop,kind,rows,total,busy,error,dialog,detail,detailBusy,detailError,openid,source,status,platform};';
  const access=vue.reactive({accessCodes:['transcripts:read']});
  const calls=[];const client={get:async(url,options)=>{calls.push({url,options});return {items:[],total:0};}};
- const mocks={vue:{...vue,onMounted(){},onActivated(){},onDeactivated(){},onUnmounted(){}},'@vben/stores':{useAccessStore:()=>access},'#/api/request':{requestClient:client}};
+ const mocks={vue:{...vue,onMounted(){},onActivated(){},onDeactivated(){},onUnmounted(){}},'@vben/stores':{useAccessStore:()=>access},'#/api/request':{requestClient:client},'#/utils/business-record-deletion':{useBusinessRecordDeletion:()=>({allowed:vue.ref(false),selected:vue.ref([]),busy:vue.ref(false),error:vue.ref(''),reset(){}})}};
  const exports={};runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require:name=>mocks[name]||{},console,Error});
  return {...exports.api,access,client,calls};
 }

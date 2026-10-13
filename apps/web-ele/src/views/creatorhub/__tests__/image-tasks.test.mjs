@@ -21,9 +21,10 @@ test('image task menu follows video menu and shares existing permission',()=>{
 function setup(){
   const route=vue.reactive({meta:{imageKind:'image_repair'}}), calls=[], pushed=[];
   const source=readFileSync(new URL('../image-records.vue',import.meta.url),'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1];
-  const exports={}, mocks={vue:{...vue,onMounted(){},onBeforeUnmount(){}},
+  const exports={}, mocks={vue:{...vue,onMounted(){},onBeforeUnmount(){},onActivated(){},onDeactivated(){}},
     'vue-router':{useRoute:()=>route,useRouter:()=>({push:(path)=>{pushed.push(path);}})},
-    'element-plus':{},'#/api/request':{requestClient:{get:async(url,options)=>{calls.push(options.params);return {items:[],total:0};}}}};
+    'element-plus':{},'#/api/request':{requestClient:{get:async(url,options)=>{calls.push(options.params);return {items:[],total:0};}}},
+    '#/utils/business-record-deletion':{useBusinessRecordDeletion:()=>({allowed:vue.ref(false),selected:vue.ref([]),busy:vue.ref(false),error:vue.ref(''),reset(){}})}};
   runInNewContext(compile(source+'\nexports.api={kind,page,dialog,load,selectKind};'),{exports,URL,require:(name)=>mocks[name]});
   return {...exports.api,route,calls,pushed};
 }

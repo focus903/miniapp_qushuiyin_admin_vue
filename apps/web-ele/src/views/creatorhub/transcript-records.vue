@@ -6,6 +6,8 @@ import { ElAlert, ElAvatar, ElButton, ElCard, ElDescriptions, ElDescriptionsItem
 import { requestClient } from '#/api/request';
 import AppDatePicker from '#/components/app-date-picker.vue';
 import CopyValue from '#/components/copy-value.vue';
+import BusinessVideoPreview from './business-video-preview.vue';
+import { useBusinessRecordDeletion } from '#/utils/business-record-deletion';
 
 type Row={id:string|number;openid:string;nickname?:string;avatar_url?:string;source:string;status?:string;error?:string;created:number;updated?:number;finished?:number;text?:string;share_text?:string;platform?:string};
 type Result={items:Row[];total:number};
@@ -35,6 +37,10 @@ async function load(){
  finally{if(version===listVersion)busy.value=false;}
 }
 function search(){page.value=1;void load();}
+const deletion=useBusinessRecordDeletion(()=>kind.value,async()=>{
+ clearDetail();await load();if(page.value>1&&!rows.value.length){page.value--;await load();}
+});
+const {allowed:canDelete,selected:deleteSelection,busy:deleteBusy,error:deleteError}=deletion;
 async function openDetail(row:Row){
  if(!allowed.value||!active)return;
  const version=++detailVersion,resource=kind.value;
@@ -49,7 +55,7 @@ function clearDetail(){detailVersion++;dialog.value=false;detail.value=null;deta
 watch(dialog,value=>{if(!value)clearDetail();});
 watch(kind,()=>{status.value='';clearDetail();search();});
 watch(allowed,value=>{if(value)void load();else{listVersion++;rows.value=[];total.value=0;busy.value=false;clearDetail();}});
-function stop(){active=false;listVersion++;busy.value=false;rows.value=[];clearDetail();}
+function stop(){active=false;listVersion++;busy.value=false;rows.value=[];clearDetail();deletion.reset();}
 onMounted(()=>void load());
 onDeactivated(stop);onUnmounted(stop);
 onActivated(()=>{if(!active){active=true;void load();}});
@@ -71,9 +77,12 @@ onActivated(()=>{if(!active){active=true;void load();}});
     <ElSelect v-if="kind==='text-tasks'" v-model="status" placeholder="全部状态" clearable style="width:150px"><ElOption v-for="(label,value) in states" :key="value" :label="label" :value="value" /></ElSelect>
     <AppDatePicker v-model="dates" type="datetimerange" start-placeholder="创建开始时间" end-placeholder="创建结束时间" />
     <ElButton type="primary" :loading="busy" @click="search">查询</ElButton>
+    <ElButton v-if="canDelete" type="danger" plain :disabled="!deleteSelection.length||busy||deleteBusy" @click="deletion.remove(deleteSelection.map(row=>String(row.id)))">删除所选（{{deleteSelection.length}}）</ElButton>
    </div>
    <ElAlert v-if="error" :title="error" type="error" class="mb-3" :closable="false" />
-   <ElTable v-loading="busy" :data="rows" row-key="id" stripe border empty-text="暂无记录">
+   <ElAlert v-if="deleteError" :title="deleteError" type="warning" class="mb-3 whitespace-pre-wrap" :closable="false" />
+   <ElTable v-loading="busy" :data="rows" row-key="id" stripe border empty-text="暂无记录" @selection-change="deleteSelection=$event">
+    <ElTableColumn v-if="canDelete" type="selection" width="48" />
     <ElTableColumn label="头像" width="80"><template #default="{row}"><ElAvatar :size="44" :src="row.avatar_url||''">用户</ElAvatar></template></ElTableColumn>
     <ElTableColumn label="用户 OpenId" min-width="250"><template #default="{row}"><CopyValue :value="row.openid" label="复制用户 OpenId" /></template></ElTableColumn>
     <ElTableColumn label="昵称" width="130" show-overflow-tooltip><template #default="{row}">{{row.nickname||'未设置'}}</template></ElTableColumn>
@@ -84,7 +93,7 @@ onActivated(()=>{if(!active){active=true;void load();}});
     <ElTableColumn v-if="kind==='text-tasks'" prop="error" label="错误原因" min-width="200" show-overflow-tooltip />
     <ElTableColumn label="创建时间" width="180"><template #default="{row}">{{time(row.created)}}</template></ElTableColumn>
     <ElTableColumn v-if="kind==='text-tasks'" label="完成时间" width="180"><template #default="{row}">{{time(row.finished)}}</template></ElTableColumn>
-    <ElTableColumn label="操作" width="100" fixed="right"><template #default="{row}"><ElButton link type="primary" @click="openDetail(row as Row)">详情</ElButton></template></ElTableColumn>
+    <ElTableColumn label="操作" width="170" fixed="right"><template #default="{row}"><ElButton link type="primary" @click="openDetail(row as Row)">详情 / 视频</ElButton><ElButton v-if="canDelete" link type="danger" :disabled="busy||deleteBusy" @click="deletion.remove([String(row.id)])">删除</ElButton></template></ElTableColumn>
    </ElTable>
    <ElPagination v-model:current-page="page" v-model:page-size="size" :total="total" :page-sizes="[20,50,100]" layout="total, sizes, prev, pager, next, jumper" class="mt-4 justify-center" @current-change="load" @size-change="search" />
   </ElCard>
@@ -103,6 +112,7 @@ onActivated(()=>{if(!active){active=true;void load();}});
       <ElDescriptionsItem v-if="detail.status" label="完成时间">{{time(detail.finished)}}</ElDescriptionsItem>
       <ElDescriptionsItem v-if="detail.error" label="错误原因">{{detail.error}}</ElDescriptionsItem>
      </ElDescriptions>
+     <BusinessVideoPreview v-if="dialog" :resource="kind" :record-id="detail.id" />
      <template v-if="detail.source==='url'">
       <div class="my-3 flex items-center justify-between"><strong>原始分享内容</strong><CopyValue v-if="detail.share_text" :value="detail.share_text" label="复制原始分享内容">复制全文</CopyValue></div>
       <pre class="transcript-text share-text">{{detail.share_text||'未记录原始分享内容'}}</pre>
