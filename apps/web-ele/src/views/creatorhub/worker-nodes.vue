@@ -3,6 +3,8 @@ import { onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue';
 import { Page } from '@vben/common-ui';
 import { ElAlert, ElButton, ElCard, ElDialog, ElInput, ElOption, ElPagination, ElProgress, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus';
 import { requestClient } from '#/api/request';
+import { timingStages, formatSeconds } from '#/utils/worker-timings';
+import WorkerHistoryDialog from './worker-history.vue';
 import { adminRealtimeState, subscribeAdminEvents } from '#/services/admin-realtime';
 
 type State = 'online' | 'offline' | 'disabled';
@@ -12,8 +14,21 @@ interface NodeEntry {
   current_tasks?: NonNullable<NodeEntry["current_task"]>[];
   server_time?: number;
 }
+interface TimingEntry {
+  task_id:string; kind:string; engine:string; input_bytes:number; width:number; height:number;
+  duration:number; seconds:Record<string,number>; updated:number; status:string|null;
+}
+interface TimingListing {items:TimingEntry[];total:number;available:boolean}
+const timingRows=ref<TimingEntry[]>([]);
+const timingTotal=ref(0);
+const timingPage=ref(1);
+const timingAvailable=ref(true);
+const timingError=ref('');
+const taskState=(value:string|null)=>({queued:'排队中',running:'处理中',completed:'已完成',failed:'失败'})[value||'']||'—';
 interface Summary { total: number; online: number; offline: number; disabled: number }
 interface Listing { items: NodeEntry[]; total: number; summary: Summary; server_time: number }
+const historyOpen=ref(false);
+const historyNode=ref<NodeEntry>();
 const rows = ref<NodeEntry[]>([]);
 const summary = ref<Summary>();
 const page = ref(1);
@@ -57,10 +72,19 @@ function search() { page.value = 1; void load(); }
 function reset() { keyword.value = ''; status.value = ''; search(); }
 async function details(id: string) {
   const current = ++detailGeneration;
+  if(selectedId.value!==id)timingPage.value=1;
+  timingRows.value=[];timingTotal.value=0;timingError.value='';timingAvailable.value=true;
   selectedId.value = id; selected.value = undefined; detailError.value = ''; dialog.value = true; detailBusy.value = true;
   try {
     const result = await requestClient.get<NodeEntry>(`/system/worker-nodes/${encodeURIComponent(id)}`);
-    if (current === detailGeneration) selected.value = result;
+    if (current !== detailGeneration) return;
+    selected.value = result;
+    try {
+      const report=await requestClient.get<TimingListing>(`/system/worker-nodes/${encodeURIComponent(id)}/timings`,{params:{page:timingPage.value,page_size:20}});
+      if(current===detailGeneration){timingRows.value=report.items;timingTotal.value=report.total;timingAvailable.value=report.available;}
+    } catch(cause) {
+      if(current===detailGeneration)timingError.value=cause instanceof Error?cause.message:'耗时记录加载失败';
+    }
   } catch (cause) {
     if (current === detailGeneration) detailError.value = cause instanceof Error ? cause.message : '节点详情读取失败';
   } finally { if (current === detailGeneration) detailBusy.value = false; }
@@ -111,7 +135,7 @@ onUnmounted(() => { generation++; detailGeneration++; });
         <ElTableColumn label="处理状态" width="110"><template #default="{ row }">{{ row.busy ? '处理中（' + currentTasks(row as NodeEntry).length + '）' : row.status === 'online' ? '空闲' : '—' }}</template></ElTableColumn>
         <ElTableColumn label="当前任务" min-width="150"><template #default="{ row }">{{ currentTasks(row as NodeEntry).map(task => taskName(task.kind)).join('、') || '—' }}</template></ElTableColumn>
         <ElTableColumn label="创建时间" width="180"><template #default="{ row }">{{ formattedTime(row.created) }}</template></ElTableColumn>
-        <ElTableColumn label="操作" width="80" fixed="right"><template #default="{ row }"><ElButton type="primary" link @click="details(row.id)">详情</ElButton></template></ElTableColumn>
+        <ElTableColumn label="操作" width="180" fixed="right"><template #default="{ row }"><ElButton type="primary" link @click="details(row.id)">详情</ElButton><ElButton type="primary" link @click="historyNode=row as NodeEntry;historyOpen=true">处理记录</ElButton></template></ElTableColumn>
       </ElTable>
       <ElPagination v-model:current-page="page" :total="total" :page-size="20" layout="total, prev, pager, next, jumper" class="mt-4" @current-change="load" />
       <p class="node-note">顶部统计为全部节点数量，不随筛选条件变化。节点信息为上次刷新时的快照。</p>
@@ -142,10 +166,30 @@ onUnmounted(() => { generation++; detailGeneration++; });
               <dt>任务开始时间</dt><dd>{{ formattedTime(task.started) }}</dd>
             </template>
           </dl>
+          <h3 class="mb-3 mt-5 font-semibold">视频任务耗时分析</h3>
+          <ElAlert title="展开任务查看各阶段耗时（秒）。阶段存在嵌套与并行，不能直接相加。统计是节点上报的诊断值，仅更新后的新任务有记录。" type="info" :closable="false" class="mb-3" />
+          <ElAlert v-if="!timingAvailable" title="耗时表尚未迁移，请先审核并应用数据库变更。" type="warning" :closable="false" />
+          <ElAlert v-if="timingError" :title="timingError" type="warning" :closable="false" />
+          <ElTable v-if="timingAvailable" :data="timingRows" row-key="task_id" empty-text="暂无上报的耗时记录">
+            <ElTableColumn type="expand"><template #default="{row}">
+              <div class="px-4 py-2">
+                <p class="mb-2">输入：{{ (row.input_bytes/1024/1024).toFixed(2) }} MB · {{ row.width }} × {{ row.height }} · {{ formatSeconds(row.duration) }} · {{ row.engine }}</p>
+                <ElTable :data="timingStages(row.seconds)" size="small"><ElTableColumn prop="label" label="阶段" /><ElTableColumn prop="formatted" label="耗时" /></ElTable>
+              </div>
+            </template></ElTableColumn>
+            <ElTableColumn prop="task_id" label="工作任务 ID" min-width="180" show-overflow-tooltip />
+            <ElTableColumn label="类型" min-width="100"><template #default="{row}">{{ taskName(row.kind) }}</template></ElTableColumn>
+            <ElTableColumn label="状态" width="90"><template #default="{row}">{{ taskState(row.status) }}</template></ElTableColumn>
+            <ElTableColumn label="处理耗时" width="120"><template #default="{row}">{{ formatSeconds(row.seconds.processing_wall) }}</template></ElTableColumn>
+            <ElTableColumn label="上报时间" width="180"><template #default="{row}">{{ formattedTime(row.updated) }}</template></ElTableColumn>
+          </ElTable>
+          <ElPagination v-if="timingTotal>20" v-model:current-page="timingPage" :total="timingTotal" :page-size="20" layout="total, prev, pager, next" class="mt-3" @current-change="details(selectedId)" />
+
         </template>
       </div>
       <template #footer><ElButton :loading="detailBusy" @click="details(selectedId)">刷新详情</ElButton><ElButton @click="dialog = false">关闭</ElButton></template>
     </ElDialog>
+    <WorkerHistoryDialog v-if="historyNode" v-model="historyOpen" :node-id="historyNode.id" :node-name="historyNode.name" />
   </Page>
 </template>
 
