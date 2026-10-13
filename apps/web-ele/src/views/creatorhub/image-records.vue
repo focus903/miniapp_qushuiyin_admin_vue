@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElAlert, ElButton, ElDialog, ElInput, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus';
 import { requestClient } from '#/api/request';
 interface ImageRecord {
@@ -10,8 +11,11 @@ interface ImageRecord {
 }
 interface Preview extends ImageRecord { input_url:string;result_url:string }
 const kinds:Record<string,string>={image_repair:'图片去水印',image_large:'图片高清',image_compress:'图片压缩',image_ocr:'图片文字识别'};
+const paths:Record<string,string>={image_repair:'/creatorhub/image-records',image_large:'/creatorhub/image-records/large',image_compress:'/creatorhub/image-records/compress',image_ocr:'/creatorhub/image-records/ocr'};
+const route=useRoute(),router=useRouter();
+const routeKind=computed(()=>typeof route.meta.imageKind==='string'&&paths[route.meta.imageKind]?route.meta.imageKind:'image_repair');
 const statuses:Record<string,string>={running:'处理中',completed:'成功',failed:'失败'};
-const rows=ref<ImageRecord[]>([]);const page=ref(1);const total=ref(0);const kind=ref('');const status=ref('');const openid=ref('');
+const rows=ref<ImageRecord[]>([]);const page=ref(1);const total=ref(0);const kind=ref(routeKind.value);const status=ref('');const openid=ref('');
 const busy=ref(false);const error=ref('');const dialog=ref(false);const detail=ref<Preview>();const previewBusy=ref(false);const previewError=ref('');
 const inputFailed=ref(false);const resultFailed=ref(false);let generation=0;let previewGeneration=0;
 const timeText=(value:number)=>value?new Date(value*1000).toLocaleString():'—';
@@ -24,6 +28,7 @@ async function load(){
   finally{if(current===generation)busy.value=false;}
 }
 function search(){page.value=1;void load();}
+function selectKind(value:string){if(paths[value])void router.push(paths[value]);}
 function closePreview(){previewGeneration++;detail.value=undefined;previewBusy.value=false;previewError.value='';}
 function mediaUrl(value:string){try{const url=new URL(value);return ['http:','https:'].includes(url.protocol)?value:'';}catch{return '';}}
 async function view(row:ImageRecord){
@@ -33,14 +38,15 @@ async function view(row:ImageRecord){
   }catch(cause){if(current===previewGeneration)previewError.value=cause instanceof Error?cause.message:'详情加载失败';}
   finally{if(current===previewGeneration)previewBusy.value=false;}
 }
+watch(routeKind,(value)=>{kind.value=value;dialog.value=false;closePreview();search();});
 onMounted(()=>void load());onBeforeUnmount(()=>{generation++;closePreview();});
 </script>
 
 <template>
   <div class="p-5">
-    <ElAlert title="记录包含图片去水印、图片高清、图片压缩与文字识别。原图和结果默认保留12小时，可在小程序配置 → 基础配置调整；过期后保留业务记录和OCR文字。旧处理无法补录。" type="info" :closable="false" class="mb-4" />
+    <ElAlert :title="`当前显示${kinds[kind]}记录。原图和结果默认保留12小时，可在系统管理 → 定时任务中分别调整；过期后保留业务记录和OCR文字。旧处理无法补录。`" type="info" :closable="false" class="mb-4" />
     <div class="filters">
-      <ElSelect v-model="kind" placeholder="全部类型" clearable @change="search"><ElOption v-for="(label,value) in kinds" :key="value" :label="label" :value="value" /></ElSelect>
+      <ElSelect :model-value="kind" placeholder="选择图片功能" @change="selectKind"><ElOption v-for="(label,value) in kinds" :key="value" :label="label" :value="value" /></ElSelect>
       <ElSelect v-model="status" placeholder="全部状态" clearable @change="search"><ElOption v-for="(label,value) in statuses" :key="value" :label="label" :value="value" /></ElSelect>
       <ElInput v-model="openid" placeholder="用户OpenID（精确查询）" clearable @keyup.enter="search" />
       <ElButton type="primary" :loading="busy" @click="search">查询</ElButton><ElButton :loading="busy" @click="load">刷新</ElButton>

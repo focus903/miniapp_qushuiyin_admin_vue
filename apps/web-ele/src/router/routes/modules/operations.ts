@@ -11,6 +11,9 @@ const routes:RouteRecordRaw[]=[
  ...[['subtitle','/video-tasks','视频去字幕'],['watermark','/watermark-tasks','视频去水印']].map(([resource,path,title])=>({name:`Video${resource}`,path:path!,component:page,meta:{title:title!,resource:resource!,permission:`${resource}:read`}})),
 ]},
 {name:'PointRecords',path:'/points/records',component:page,meta:{title:'积分流水',resource:'points',permission:'points:read',icon:'lucide:coins',order:6}},
+{name:'ImageOperations',path:'/images',meta:{title:'图片任务',icon:'lucide:images',order:5.5},children:[
+ ...[['repair','/creatorhub/image-records','图片去水印','image_repair'],['large','/creatorhub/image-records/large','图片高清','image_large'],['compress','/creatorhub/image-records/compress','图片压缩','image_compress'],['ocr','/creatorhub/image-records/ocr','图片文字识别','image_ocr']].map(([name,path,title,imageKind])=>({name:`Image${name}`,path:path!,component:()=>import('#/views/creatorhub/image-records.vue'),meta:{title:title!,imageKind:imageKind!,resource:'image-records',permission:'image-records:read'}})),
+]},
 {name:'MembershipRecords',path:'/memberships/records',component:page,meta:{title:'会员记录',resource:'memberships',permission:'membership:read',icon:'lucide:crown',order:7}},
 {name:'RechargeRecords',path:'/points/orders',component:page,meta:{title:'充值订单',resource:'orders',permission:'orders:read',icon:'lucide:receipt',order:8}},
 ];
