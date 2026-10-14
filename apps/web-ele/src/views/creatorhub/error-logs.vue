@@ -10,7 +10,7 @@ interface ErrorEntry {
   id: string; created: number; request_id: string; source: string; method: string;
   path: string; status: number; exception_type: string; message: string;
   traceback?: string; task_id: string; node: string;
-  level?: string;
+  level?: string; openid?: string | null;
   request_context?: {
     request_url?: string; user_id?: string | null; platform?: string;
     duration_ms?: number; stage?: string; body?: unknown; query?: unknown;
@@ -161,6 +161,11 @@ onMounted(load);
         <ElTableColumn label="状态" width="90"><template #default="{row}"><ElTag :type="row.level === 'WARNING' ? 'warning' : 'danger'">{{ row.status }}</ElTag></template></ElTableColumn>
         <ElTableColumn label="级别" width="105"><template #default="{row}">{{ row.level || 'ERROR' }}</template></ElTableColumn>
         <ElTableColumn label="来源" width="100"><template #default="{row}">{{ row.source === 'parse' ? '解析失败' : row.source === 'task' ? '后台任务' : row.method }}</template></ElTableColumn>
+        <ElTableColumn prop="openid" label="OpenID" min-width="220">
+          <template #default="{row}">
+            <div class="message-cell"><span class="message-text" :title="row.openid || ''">{{ row.openid || '—' }}</span><ElButton v-if="row.openid" link type="primary" @click.stop="copyText(row.openid)">复制</ElButton></div>
+          </template>
+        </ElTableColumn>
         <ElTableColumn prop="path" label="接口 / 任务" min-width="180" show-overflow-tooltip />
         <ElTableColumn prop="message" label="错误原因" min-width="240">
           <template #default="{row}">

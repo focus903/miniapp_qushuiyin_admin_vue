@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PermissionTree from '#/components/permission-tree.vue';
 import WechatCookie from '#/components/wechat-cookie.vue';
+import DouyinCookie from '#/components/douyin-cookie.vue';
 import AppConfigField from '#/components/app-config-field.vue';
 import { configTabs } from '#/utils/app-config-layout';
 import type { ConfigSchema, ConfigValues } from '#/utils/app-config-layout';
@@ -37,6 +38,7 @@ const outputIcons:Record<string,{icon:string;color:string}>={
  youtubeOutputMode:{icon:'simple-icons:youtube',color:'#ff0000'},
 };
 const wechatCookieDialog=ref(false);
+const douyinCookieDialog=ref(false);
 const configGeneration=ref(0);
 const configLayout=ref<ReturnType<typeof configTabs>>([]);
 const invalidFields=ref<Record<string,boolean>>({});
@@ -79,14 +81,14 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
   <ElAlert v-if="group.code==='notifications'" title="关闭固定版本：匹配用户授权时的小程序版本。开启：统一使用指定版本。旧任务或缺少有效版本时使用指定版本兜底；修改不会改变已发送的通知。" type="info" :closable="false" class="mb-4" />
   <div v-if="group.fields.length" class="config-grid">
   <AppConfigField v-for="field in group.fields.filter(item=>item.key!=='wxTaskMessageStateFixed')" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
-   <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <span v-if="field.key==='wxTaskMessageState'" class="ml-3 inline-flex items-center gap-2 text-sm"><ElSwitch :model-value="config.wxTaskMessageStateFixed===true" @update:model-value="value=>config.wxTaskMessageStateFixed=Boolean(value)" />固定使用此版本</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
+   <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <span v-if="field.key==='wxTaskMessageState'" class="ml-3 inline-flex items-center gap-2 text-sm"><ElSwitch :model-value="config.wxTaskMessageStateFixed===true" @update:model-value="value=>config.wxTaskMessageStateFixed=Boolean(value)" />固定使用此版本</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton> <ElButton v-if="field.key==='douyinOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="douyinCookieDialog=true">登录态配置</ElButton></template>
   </AppConfigField>
   </div>
   <div v-if="group.children.length" class="grid gap-4 md:grid-cols-2">
    <ElCard v-for="child in group.children" :key="child.id" class="config-section" :data-config-group="child.code" shadow="never" :header="child.label">
     <div class="config-grid">
     <AppConfigField v-for="field in child.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
-     <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <span v-if="field.key==='wxTaskMessageState'" class="ml-3 inline-flex items-center gap-2 text-sm"><ElSwitch :model-value="config.wxTaskMessageStateFixed===true" @update:model-value="value=>config.wxTaskMessageStateFixed=Boolean(value)" />固定使用此版本</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton></template>
+     <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <span v-if="field.key==='wxTaskMessageState'" class="ml-3 inline-flex items-center gap-2 text-sm"><ElSwitch :model-value="config.wxTaskMessageStateFixed===true" @update:model-value="value=>config.wxTaskMessageStateFixed=Boolean(value)" />固定使用此版本</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton> <ElButton v-if="field.key==='douyinOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="douyinCookieDialog=true">登录态配置</ElButton></template>
     </AppConfigField>
     </div>
    </ElCard>
@@ -107,6 +109,9 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
 </ElCard>
 <ElDialog v-if="isConfig" v-model="wechatCookieDialog" title="微信视频号 Cookie 配置" width="min(1100px, 94vw)" top="5vh" destroy-on-close>
  <WechatCookie v-if="wechatCookieDialog" :can-save="canSave" />
+</ElDialog>
+<ElDialog v-if="isConfig" v-model="douyinCookieDialog" title="抖音登录态配置" width="min(900px, 94vw)" top="5vh" destroy-on-close>
+ <DouyinCookie v-if="douyinCookieDialog" :can-save="canSave" />
 </ElDialog>
 <ElDialog v-model="userDialog" :title="editingId?'编辑管理员':'新增管理员'" width="560px" @closed="userForm.password=''">
 <ElForm label-width="100px"><ElFormItem label="账号"><ElInput v-model="userForm.username" maxlength="64" autocomplete="off"/></ElFormItem><ElFormItem :label="editingId?'新密码':'密码'"><ElInput v-model="userForm.password" type="password" show-password autocomplete="new-password" :placeholder="editingId?'留空不修改；至少6位':'至少6位'"/></ElFormItem><ElFormItem label="启用"><ElSwitch v-model="userForm.enabled" :active-value="1" :inactive-value="0"/></ElFormItem><ElFormItem label="角色"><ElSelect v-model="userForm.roles" multiple style="width:100%"><ElOption v-for="role in roles" :key="role.code" :label="role.name" :value="role.code"/></ElSelect></ElFormItem></ElForm><template #footer><ElButton @click="userDialog=false">取消</ElButton><ElButton type="primary" :loading="saving" @click="saveUser">保存</ElButton></template></ElDialog>
