@@ -1,5 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router';
 const routes:RouteRecordRaw[]=[
+{path:'/creatorhub/system-info',name:'CreatorHubSystemInfo',component:()=>import('#/views/creatorhub/system-info.vue'),meta:{title:'系统信息',resource:'system-info',permission:'system-info:read',icon:'lucide:cpu'}},
 {path:'/creatorhub/scheduled-tasks',name:'CreatorHubScheduledTasks',component:()=>import('#/views/creatorhub/scheduled-tasks.vue'),meta:{title:'定时任务',resource:'scheduled-tasks',permission:'scheduled-tasks:read',icon:'lucide:clock',order:0.65}},
 {path:'/creatorhub/proxy-pool',name:'CreatorHubProxyPool',component:()=>import('#/views/creatorhub/proxy-pool.vue'),meta:{title:'IP代理池',resource:'proxy-pool',permission:'proxy-pool:read',icon:'lucide:network',order:0.8}},
 {path:'/creatorhub/menu-layout',name:'CreatorHubMenuLayout',component:()=>import('#/views/creatorhub/menu-layout.vue'),meta:{title:'菜单管理',resource:'menu-layout',permission:'menu-layout:read',icon:'lucide:list-tree'}},

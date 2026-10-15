@@ -3,7 +3,7 @@ import { featureLabel } from '#/utils/feature-label';
 import { adminActionLabel } from '#/utils/admin-action';
 import CopyValue from '#/components/copy-value.vue';
 import { computed, onDeactivated, onUnmounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { RouterLink, useRoute } from 'vue-router';
 import { Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 import { ElDropdown,ElDropdownMenu,ElDropdownItem,ElAvatar,ElAlert,ElButton,ElCard,ElDescriptions,ElDescriptionsItem,ElDialog,ElForm,ElFormItem,ElInput,ElInputNumber,ElMessage,ElMessageBox,ElOption,ElPagination,ElSelect,ElSwitch,ElTable,ElTableColumn,ElTabs,ElTabPane,ElTag,ElTooltip } from 'element-plus';
@@ -36,6 +36,9 @@ async function toggleDevelopment(row:Row):Promise<boolean>{
 const kind=ref('');const page=ref(1);const size=ref(20);const rows=ref<Row[]>([]);const total=ref(0);const busy=ref(false);const error=ref('');const dates=ref<[Date,Date]|null>(null);
 const userCreatedDates=ref<[Date,Date]|null>(null),userLoginDates=ref<[Date,Date]|null>(null);
 const filters=ref({openid:'',nickname:'',status:'',platform:'',output_mode:'',run_id:'',resource_key:'',feature:'',is_valid:''});
+function parseRecordsLocation(row:Row,status:'success'|'failed'){
+ return {path:'/parse-records',query:{openid:String(row.openid||''),status}};
+}
 const loginHistoryOpen=ref(false),loginHistoryOwner=ref('');
 function openLoginHistory(row:Row){if(!access.accessCodes.includes('users:read'))return;loginHistoryOwner.value=String(row.openid);loginHistoryOpen.value=true;}
 watch(()=>route.fullPath,()=>{loginHistoryOpen.value=false;});
@@ -254,8 +257,10 @@ function show(key:string,value:unknown,row:Row={}):string {
  }
  return String(value);
 }
+let loadVersion=0;
 async function load(){
  if(!canRead(kind.value))return;
+ const version=++loadVersion;
  selected.value=[];busy.value=true;error.value='';
  try{
   const userRanges=kind.value==='users'?{
@@ -268,10 +273,10 @@ async function load(){
    end:dates.value?Math.floor(dates.value[1].getTime()/1000):0,
   };
   const params={trashed:kind.value==='parses'&&trashed.value,...Object.fromEntries(Object.entries(filters.value).filter(([,v])=>v!=='')),page:page.value,page_size:size.value,...userRanges};
-  if(kind.value==='dashboard')overview.value=await requestClient.get('/operations/dashboard',{params});
-  else{const data=await requestClient.get<Result>(`/operations/records/${kind.value}`,{params});rows.value=data.items;total.value=data.total;}
- }catch(e){error.value=e instanceof Error?e.message:'加载失败，请重试';}
- finally{busy.value=false;}
+  if(kind.value==='dashboard'){const data=await requestClient.get<Row>('/operations/dashboard',{params});if(version===loadVersion)overview.value=data;}
+  else{const data=await requestClient.get<Result>(`/operations/records/${kind.value}`,{params});if(version!==loadVersion)return;rows.value=data.items;total.value=data.total;}
+ }catch(e){if(version===loadVersion)error.value=e instanceof Error?e.message:'加载失败，请重试';}
+ finally{if(version===loadVersion)busy.value=false;}
 }
 function search(){page.value=1;void load();}
 type MediaDeleteFailure={id:string;code:number;message:string;files?:MediaDeleteFailure[]};
@@ -394,7 +399,17 @@ async function submitParseDelete(action:'delete'|'purge'){const items=parseDelet
 
 function toggleRecycle(){trashed.value=!trashed.value;page.value=1;selected.value=[];void load();}
 watch(resource,()=>{kind.value=resource.value;},{immediate:true});
-watch(kind,()=>{trashed.value=false;selected.value=[];page.value=1;rows.value=[];visible.value=false;userCreatedDates.value=null;userLoginDates.value=null;filters.value={openid:'',nickname:'',status:'',platform:'',output_mode:'',run_id:'',resource_key:String(route.query.resource_key||''),feature:'',is_valid:''};void load();},{immediate:true});
+function resetList(){
+ loadVersion++;busy.value=false;trashed.value=false;selected.value=[];page.value=1;rows.value=[];visible.value=false;userCreatedDates.value=null;userLoginDates.value=null;
+ if(kind.value==='parses')dates.value=null;
+ const openid=kind.value==='parses'&&typeof route.query.openid==='string'?route.query.openid:'';
+ const status=kind.value==='parses'&&typeof route.query.status==='string'&&['success','failed','processing'].includes(route.query.status)?route.query.status:'';
+ filters.value={openid,nickname:'',status,platform:'',output_mode:'',run_id:'',resource_key:String(route.query.resource_key||''),feature:'',is_valid:''};
+ void load();
+}
+watch([kind,()=>route.query.openid,()=>route.query.status],([name],[previous])=>{
+ if(name!==previous||(name==='parses'&&resource.value==='parses'))resetList();
+},{immediate:true});
 </script>
 <template>
 <Page :title="String(route.meta.title)" description="运营记录与任务管理">
@@ -467,7 +482,7 @@ watch(kind,()=>{trashed.value=false;selected.value=[];page.value=1;rows.value=[]
 <div><span class="user-info-label">创建：</span><span>{{show('created_at',s.row.created_at)}}</span></div>
 <div><span class="user-info-label">登录：</span><span>{{show('last_login_at',s.row.last_login_at)}}</span></div>
 <div><span class="user-info-label">更新：</span><span>{{show('updated_at',s.row.updated_at)}}</span></div>
-</div><ElTag v-else-if="key==='is_vip'" class="user-member-tag" :effect="s.row.is_vip?'dark':'light'" :type="s.row.is_vip?'warning':'info'">{{show(key,s.row[key],s.row)}}</ElTag><ElTag v-else-if="key==='output_mode'||key==='status'||key==='is_valid'" :type="kind==='parses'&&key==='status'?parseStatusType(s.row):undefined" :size="kind==='parses'?'small':undefined" :class="{'parse-status-tag':kind==='parses'}">{{show(key,s.row[key],s.row)}}</ElTag><span v-else-if="kind==='users'&&['share_parse_count','balance'].includes(key)" class="user-stat" :class="key==='balance'?'user-stat-balance':'user-stat-parses'">{{show(key,s.row[key],s.row)}}</span><CopyValue v-else-if="kind==='resources'&&key==='resource_key'" :value="s.row.resource_key" label="复制资源标识"><ElButton v-if="canRead('files')" link type="primary" style="white-space:normal;overflow-wrap:anywhere;height:auto" @click="openResourceFiles(s.row)">{{s.row.resource_key}}</ElButton><span v-else>{{s.row.resource_key}}</span></CopyValue><div v-else-if="kind==='parses'&&key==='share_text'" class="flex flex-col items-start gap-1"><CopyValue :value="s.row.share_text" label="复制原始分享内容" /><ElButton v-if="canRead('resources')" link type="primary" :disabled="!s.row.share_text" @click.stop="openParseResources(s.row)">查看共享资源</ElButton></div><CopyValue v-else-if="['source_url','object_url','object_key','audio_url','share_text'].includes(key)" :value="s.row[key]" :label="'复制'+labels[key]" /><div v-else-if="key==='points'&&s.row.order_type" class="order-point-lines"><span>{{show(key,s.row[key],s.row)}}</span><span class="order-point-balance">变动后余额：{{show('balance_after',s.row.balance_after)}}</span></div><ElTag v-else-if="kind==='parses'&&key==='scene'" size="small" class="parse-scene-tag" :type="s.row.scene==='parseShareLink'?'primary':s.row.scene==='extractTextFromLink'?'success':'info'">{{show(key,s.row[key],s.row)}}</ElTag><ElTag v-else-if="kind==='parses'&&key==='platform'" size="small" class="parse-platform-tag" :style="platformTagStyle(s.row.platform)">{{show(key,s.row[key],s.row)}}</ElTag><CopyValue v-else-if="key==='openid'" :value="s.row.openid" label="复制用户 OpenId" /><span v-else :class="key==='balance_after'?'point-balance':key==='point_change'?changeClass(s.row[key]):key==='source_label'?sourceClass(s.row):undefined">{{show(key,s.row[key],s.row)}}</span></template></ElTableColumn><ElTableColumn label="操作" fixed="right" :width="kind==='users'?270:task?260:kind==='parses'&&trashed?240:180"><template #default="s"><ElButton link type="primary" @click="open(s.row)">{{task?'详情 / 视频':'详情'}}</ElButton><ElButton v-if="canDeleteBusiness" link type="danger" :disabled="busy||businessDeleteBusy" @click="businessDeletion.remove([String(s.row.id)])">删除</ElButton><ElButton v-if="kind==='users'&&access.accessCodes.includes('points:read')" link type="primary" @click="openUserPoints(s.row)">积分流水</ElButton><ElButton v-if="kind==='users'&&access.accessCodes.includes('users:delete')" link type="danger" :disabled="busy||deletionSaving" @click="openUserDeletion(s.row)">删除用户</ElButton><ElButton v-if="canDeleteMedia" link type="danger" :disabled="busy||mediaDeleteBusy" @click="deleteMedia(kind as 'resources'|'files',[s.row])">删除</ElButton><ElButton v-if="kind==='parses'&&trashed&&canRecycle" link type="primary" :disabled="busy||recycleSaving" @click="changeRecycle('restore',[s.row])">恢复</ElButton><ElButton v-if="kind==='parses'&&trashed&&canPurge" link type="danger" :disabled="busy||recycleSaving" @click="purgeParseRecords([s.row])">直接删除</ElButton><ElButton v-if="kind==='parses'&&!trashed&&(canRecycle||canPurge)" link type="danger" :disabled="busy||recycleSaving" @click="openParseDelete([s.row])">删除</ElButton><template v-if="task"><ElButton v-if="access.accessCodes.includes(`${kind}:retry`)" link :disabled="busy||Number(s.row.status)!==2" @click="operate(s.row,'retry')">重试</ElButton><ElButton v-if="access.accessCodes.includes(`${kind}:cancel`)" link type="danger" :disabled="busy||Number(s.row.status)!==0" @click="operate(s.row,'cancel')">取消</ElButton></template><ElDropdown v-if="kind==='users'&&['points:grant','points:deduct','membership:grant'].some(code=>access.accessCodes.includes(code))" trigger="click" class="ml-3" :disabled="saving">
+</div><ElTag v-else-if="key==='is_vip'" class="user-member-tag" :effect="s.row.is_vip?'dark':'light'" :type="s.row.is_vip?'warning':'info'">{{show(key,s.row[key],s.row)}}</ElTag><ElTag v-else-if="key==='output_mode'||key==='status'||key==='is_valid'" :type="kind==='parses'&&key==='status'?parseStatusType(s.row):undefined" :size="kind==='parses'?'small':undefined" :class="{'parse-status-tag':kind==='parses'}">{{show(key,s.row[key],s.row)}}</ElTag><span v-else-if="kind==='users'&&key==='share_parse_count'" class="user-stat user-stat-parses"><template v-if="canRead('parses')&&s.row.openid"><RouterLink :to="parseRecordsLocation(s.row,'success')" class="user-parse-link user-parse-success" @click.stop>成功:{{s.row.share_parse_success_count ?? 0}}</RouterLink><span> / </span><RouterLink :to="parseRecordsLocation(s.row,'failed')" class="user-parse-link user-parse-failed" @click.stop>失败:{{s.row.share_parse_failed_count ?? 0}}</RouterLink></template><span v-else>{{show(key,s.row[key],s.row)}}</span></span><span v-else-if="kind==='users'&&key==='balance'" class="user-stat user-stat-balance">{{show(key,s.row[key],s.row)}}</span><CopyValue v-else-if="kind==='resources'&&key==='resource_key'" :value="s.row.resource_key" label="复制资源标识"><ElButton v-if="canRead('files')" link type="primary" style="white-space:normal;overflow-wrap:anywhere;height:auto" @click="openResourceFiles(s.row)">{{s.row.resource_key}}</ElButton><span v-else>{{s.row.resource_key}}</span></CopyValue><div v-else-if="kind==='parses'&&key==='share_text'" class="flex flex-col items-start gap-1"><CopyValue :value="s.row.share_text" label="复制原始分享内容" /><ElButton v-if="canRead('resources')" link type="primary" :disabled="!s.row.share_text" @click.stop="openParseResources(s.row)">查看共享资源</ElButton></div><CopyValue v-else-if="['source_url','object_url','object_key','audio_url','share_text'].includes(key)" :value="s.row[key]" :label="'复制'+labels[key]" /><div v-else-if="key==='points'&&s.row.order_type" class="order-point-lines"><span>{{show(key,s.row[key],s.row)}}</span><span class="order-point-balance">变动后余额：{{show('balance_after',s.row.balance_after)}}</span></div><ElTag v-else-if="kind==='parses'&&key==='scene'" size="small" class="parse-scene-tag" :type="s.row.scene==='parseShareLink'?'primary':s.row.scene==='extractTextFromLink'?'success':'info'">{{show(key,s.row[key],s.row)}}</ElTag><ElTag v-else-if="kind==='parses'&&key==='platform'" size="small" class="parse-platform-tag" :style="platformTagStyle(s.row.platform)">{{show(key,s.row[key],s.row)}}</ElTag><CopyValue v-else-if="key==='openid'" :value="s.row.openid" label="复制用户 OpenId" /><span v-else :class="key==='balance_after'?'point-balance':key==='point_change'?changeClass(s.row[key]):key==='source_label'?sourceClass(s.row):undefined">{{show(key,s.row[key],s.row)}}</span></template></ElTableColumn><ElTableColumn label="操作" fixed="right" :width="kind==='users'?270:task?260:kind==='parses'&&trashed?240:180"><template #default="s"><ElButton link type="primary" @click="open(s.row)">{{task?'详情 / 视频':'详情'}}</ElButton><ElButton v-if="canDeleteBusiness" link type="danger" :disabled="busy||businessDeleteBusy" @click="businessDeletion.remove([String(s.row.id)])">删除</ElButton><ElButton v-if="kind==='users'&&access.accessCodes.includes('points:read')" link type="primary" @click="openUserPoints(s.row)">积分流水</ElButton><ElButton v-if="kind==='users'&&access.accessCodes.includes('users:delete')" link type="danger" :disabled="busy||deletionSaving" @click="openUserDeletion(s.row)">删除用户</ElButton><ElButton v-if="canDeleteMedia" link type="danger" :disabled="busy||mediaDeleteBusy" @click="deleteMedia(kind as 'resources'|'files',[s.row])">删除</ElButton><ElButton v-if="kind==='parses'&&trashed&&canRecycle" link type="primary" :disabled="busy||recycleSaving" @click="changeRecycle('restore',[s.row])">恢复</ElButton><ElButton v-if="kind==='parses'&&trashed&&canPurge" link type="danger" :disabled="busy||recycleSaving" @click="purgeParseRecords([s.row])">直接删除</ElButton><ElButton v-if="kind==='parses'&&!trashed&&(canRecycle||canPurge)" link type="danger" :disabled="busy||recycleSaving" @click="openParseDelete([s.row])">删除</ElButton><template v-if="task"><ElButton v-if="access.accessCodes.includes(`${kind}:retry`)" link :disabled="busy||Number(s.row.status)!==2" @click="operate(s.row,'retry')">重试</ElButton><ElButton v-if="access.accessCodes.includes(`${kind}:cancel`)" link type="danger" :disabled="busy||Number(s.row.status)!==0" @click="operate(s.row,'cancel')">取消</ElButton></template><ElDropdown v-if="kind==='users'&&['points:grant','points:deduct','membership:grant'].some(code=>access.accessCodes.includes(code))" trigger="click" class="ml-3" :disabled="saving">
 <ElButton link type="primary" :disabled="saving">更多 ▾</ElButton>
 <template #dropdown><ElDropdownMenu>
 <ElDropdownItem v-if="access.accessCodes.includes('points:grant')" :disabled="saving" @click="openGrant(s.row)">发放积分</ElDropdownItem>
@@ -549,6 +564,10 @@ watch(kind,()=>{trashed.value=false;selected.value=[];page.value=1;rows.value=[]
 </template>
 
 <style scoped>
+.user-parse-link { text-underline-offset:3px; }
+.user-parse-link:hover, .user-parse-link:focus-visible { text-decoration:underline; }
+.user-parse-success { color:var(--el-color-success); }
+.user-parse-failed { color:var(--el-color-danger); }
 .overview-groups { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
 .overview-group-wide { grid-column:1 / -1; }
 .overview-group-title { margin:0; font-size:16px; font-weight:600; }

@@ -3,6 +3,7 @@ import PermissionTree from '#/components/permission-tree.vue';
 import WechatCookie from '#/components/wechat-cookie.vue';
 import DouyinCookie from '#/components/douyin-cookie.vue';
 import AppConfigField from '#/components/app-config-field.vue';
+import { asrModelInfo } from '#/utils/asr-model-info';
 import { configTabs } from '#/utils/app-config-layout';
 import type { ConfigSchema, ConfigValues } from '#/utils/app-config-layout';
 import { computed, ref, watch } from 'vue';
@@ -20,6 +21,7 @@ const isConfig=computed(()=>route.meta.resource==='app-config');
 const canSave=computed(()=>access.accessCodes.includes(isConfig.value?'app-config:update':route.meta.resource==='roles'?'roles:update':'admins:update'));
 const busy=ref(false);const saving=ref(false);const error=ref('');const page=ref(1);const total=ref(0);const keyword=ref('');const enabled=ref<number>();
 const admins=ref<Admin[]>([]);const roles=ref<Role[]>([]);const permissions=ref<{code:string;name:string}[]>([]);const config=ref<Config>({});
+const currentAsrModel=computed(()=>asrModelInfo(config.value.whisperModel));
 const tab=ref('admins');const userDialog=ref(false);const roleDialog=ref(false);const editingId=ref('');
 const userForm=ref({username:'',password:'',enabled:1,roles:[] as string[]});const roleForm=ref<Role>({code:'',name:'',permissions:[]});const editingRole=ref(false);
 const configTab=ref('');
@@ -79,6 +81,12 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
 <ElTabs v-model="configTab">
  <ElTabPane v-for="group in configLayout" :key="group.id" :label="group.label" :name="group.code">
   <ElAlert v-if="group.code==='notifications'" title="关闭固定版本：匹配用户授权时的小程序版本。开启：统一使用指定版本。旧任务或缺少有效版本时使用指定版本兜底；修改不会改变已发送的通知。" type="info" :closable="false" class="mb-4" />
+  <div v-if="group.fields.some(field=>field.key==='whisperModel')" class="asr-model-panel" aria-label="当前配置的语音识别模型">
+    <div class="asr-model-heading"><IconifyIcon icon="lucide:audio-lines" class="size-7 shrink-0" aria-hidden="true" /><div><div class="asr-model-caption">当前配置模型</div><div class="asr-model-name">{{ currentAsrModel.label }}</div></div><span class="asr-language">{{ currentAsrModel.language }}</span></div>
+    <p class="asr-model-scene">{{ currentAsrModel.scene }}</p>
+    <p class="asr-model-note">{{ currentAsrModel.note }}</p>
+    <p class="asr-model-note">修改模型后需保存配置，新请求采用新配置；此处不代表节点已成功加载模型。模型文件需提前准备。</p>
+  </div>
   <div v-if="group.fields.length" class="config-grid">
   <AppConfigField v-for="field in group.fields.filter(item=>item.key!=='wxTaskMessageStateFixed')" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
    <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <span v-if="field.key==='wxTaskMessageState'" class="ml-3 inline-flex items-center gap-2 text-sm"><ElSwitch :model-value="config.wxTaskMessageStateFixed===true" @update:model-value="value=>config.wxTaskMessageStateFixed=Boolean(value)" />固定使用此版本</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton> <ElButton v-if="field.key==='douyinOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="douyinCookieDialog=true">登录态配置</ElButton></template>
@@ -86,6 +94,12 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
   </div>
   <div v-if="group.children.length" class="grid gap-4 md:grid-cols-2">
    <ElCard v-for="child in group.children" :key="child.id" class="config-section" :data-config-group="child.code" shadow="never" :header="child.label">
+    <div v-if="child.fields.some(field=>field.key==='whisperModel')" class="asr-model-panel" aria-label="当前配置的语音识别模型">
+    <div class="asr-model-heading"><IconifyIcon icon="lucide:audio-lines" class="size-7 shrink-0" aria-hidden="true" /><div><div class="asr-model-caption">当前配置模型</div><div class="asr-model-name">{{ currentAsrModel.label }}</div></div><span class="asr-language">{{ currentAsrModel.language }}</span></div>
+    <p class="asr-model-scene">{{ currentAsrModel.scene }}</p>
+    <p class="asr-model-note">{{ currentAsrModel.note }}</p>
+    <p class="asr-model-note">修改模型后需保存配置，新请求采用新配置；此处不代表节点已成功加载模型。模型文件需提前准备。</p>
+  </div>
     <div class="config-grid">
     <AppConfigField v-for="field in child.fields" :key="`${configGeneration}-${field.key}`" :field="field" :model-value="config[field.key]" @update:model-value="value=>config[field.key]=value" @validity-change="valid=>invalidFields[field.key]=!valid">
      <template #label><span class="inline-flex items-center gap-2"><IconifyIcon v-if="outputIcons[field.key]" :icon="outputIcons[field.key]!.icon" :style="{color:outputIcons[field.key]!.color}" class="size-5 shrink-0" aria-hidden="true" />{{ field.label }}</span> <span v-if="field.key==='wxTaskMessageState'" class="ml-3 inline-flex items-center gap-2 text-sm"><ElSwitch :model-value="config.wxTaskMessageStateFixed===true" @update:model-value="value=>config.wxTaskMessageStateFixed=Boolean(value)" />固定使用此版本</span> <ElButton v-if="field.key==='wechatOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="wechatCookieDialog=true">Cookie 配置</ElButton> <ElButton v-if="field.key==='douyinOutputMode'" class="ml-2" size="small" type="primary" plain :disabled="false" @click="douyinCookieDialog=true">登录态配置</ElButton></template>
@@ -156,4 +170,6 @@ watch(()=>route.path,()=>{page.value=1;tab.value=String(route.meta.resource);use
 .config-grid > :deep(.config-switch) {
   grid-column: auto;
 }
+.asr-model-panel{padding:18px 20px;margin-bottom:20px;border:1px solid var(--el-color-primary-light-7);border-left:5px solid var(--el-color-primary);border-radius:10px;background:var(--el-color-primary-light-9)}
+.asr-model-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:var(--el-color-primary)}.asr-model-caption{font-size:12px;color:var(--el-text-color-secondary)}.asr-model-name{font-size:24px;font-weight:700;line-height:1.4;overflow-wrap:anywhere}.asr-language{margin-left:auto;padding:5px 10px;border-radius:16px;background:var(--el-color-primary);color:var(--el-color-white);font-size:12px;font-weight:600}.asr-model-scene{margin-top:12px;color:var(--el-text-color-primary);font-size:14px}.asr-model-note{margin-top:8px;color:var(--el-text-color-secondary);font-size:12px;line-height:1.6}
 </style>
