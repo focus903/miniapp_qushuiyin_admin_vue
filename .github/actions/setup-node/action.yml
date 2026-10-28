@@ -21,7 +21,7 @@ runs:
 
     - uses: actions/cache@v5
       name: Setup pnpm cache
-      if: ${{ github.ref_name == 'main' }}
+      if: ${{ github.ref_name == 'master' }}
       with:
         path: ${{ env.STORE_PATH }}
         key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -29,7 +29,7 @@ runs:
           ${{ runner.os }}-pnpm-store-
 
     - uses: actions/cache/restore@v5
-      if: ${{ github.ref_name != 'main' }}
+      if: ${{ github.ref_name != 'master' }}
       with:
         path: ${{ env.STORE_PATH }}
         key: |
