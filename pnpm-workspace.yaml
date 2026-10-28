@@ -34,6 +34,8 @@ overrides:
   '@ctrl/tinycolor': 'catalog:'
   clsx: 'catalog:'
   pinia: 'catalog:'
+  # Vite 的可选 peer 也可能保留 embedded；统一使用纯 JS Sass 兼容 macOS 13。
+  sass-embedded: npm:sass@1.103.1
   vue: 'catalog:'
 
 catalog:
@@ -167,7 +169,6 @@ catalog:
   rimraf: ^6.1.3
   rollup-plugin-visualizer: ^7.0.1
   sass: ^1.101.6
-  sass-embedded: ^1.100.0
   secure-ls: ^2.0.0
   sortablejs: ^1.15.7
   stylelint: ^17.14.1

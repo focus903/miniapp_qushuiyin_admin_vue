@@ -48,6 +48,7 @@
     "vue-router": "catalog:"
   },
   "devDependencies": {
+    "typescript": "catalog:",
     "unplugin-element-plus": "catalog:"
   }
 }

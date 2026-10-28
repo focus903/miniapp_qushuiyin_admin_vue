@@ -43,7 +43,7 @@
 
 pre-commit:
   # 串行执行（不设 parallel），避免与 check:type 同时运行导致低配机内存/CPU 瞬时飙升。
-  # lint 仅检查暂存文件并自动修复后回填，大幅降低负载；check:type 仍需全量。
+  # lint 仅检查暂存文件；类型检查仅运行当前使用的 web-ele 应用。
   jobs:
     - name: oxlint
       glob: '*.{js,jsx,ts,tsx,vue,cjs,mjs,cts,mts}'
@@ -61,8 +61,9 @@ pre-commit:
       glob: '*.{vue,css,less,scss}'
       run: pnpm exec stylelint --fix {staged_files}
       stage_fixed: true
+    # 完全关闭提交时的类型检查：注释掉下面两行；其他检查继续执行。
     - name: checkType
-      run: pnpm check:type
+      run: pnpm --filter @vben/web-ele run typecheck
 
 post-merge:
   commands:

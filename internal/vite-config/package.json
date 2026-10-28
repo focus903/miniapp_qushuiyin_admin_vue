@@ -50,7 +50,7 @@
     "dotenv": "catalog:",
     "rollup-plugin-visualizer": "catalog:",
     "sass": "catalog:",
-    "sass-embedded": "catalog:",
+    "sass-embedded": "npm:sass@1.103.1",
     "unplugin-dts": "catalog:",
     "vite": "catalog:",
     "vite-plugin-compression": "catalog:",

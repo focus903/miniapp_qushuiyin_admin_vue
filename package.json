@@ -98,6 +98,7 @@
     "oxlint-tsgolint": "catalog:",
     "playwright": "catalog:",
     "rimraf": "catalog:",
+    "sass-embedded": "npm:sass@1.103.1",
     "tailwindcss": "catalog:",
     "tsdown": "catalog:",
     "turbo": "catalog:",

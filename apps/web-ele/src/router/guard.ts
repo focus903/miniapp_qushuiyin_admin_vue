@@ -1,18 +1,20 @@
-import { allowedRoutes } from '#/utils/route-permissions';
-import { applyLayout } from '#/utils/menu-layout';
-import type { MenuLayoutResult } from '#/utils/menu-layout';
-import { requestClient } from '#/api/request';
-import { ElMessage } from 'element-plus';
 import type { Router } from 'vue-router';
+
+import type { MenuLayoutResult } from '#/utils/menu-layout';
 
 import { LOGIN_PATH } from '@vben/constants';
 import { preferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
 import { startProgress, stopProgress } from '@vben/utils';
 
+import { ElMessage } from 'element-plus';
+
+import { getAccessCodesApi, refreshTokenApi } from '#/api/core/auth';
+import { requestClient } from '#/api/request';
 import { accessRoutes, coreRouteNames } from '#/router/routes';
 import { useAuthStore } from '#/store';
-import { refreshTokenApi, getAccessCodesApi } from '#/api/core/auth';
+import { applyLayout } from '#/utils/menu-layout';
+import { allowedRoutes } from '#/utils/route-permissions';
 
 import { generateAccess } from './access';
 
@@ -61,8 +63,14 @@ function setupAccessGuard(router: Router) {
     if (!restored) {
       restored = true;
       if (!accessStore.accessToken) {
-        try { const response = await refreshTokenApi(); accessStore.setAccessToken(response.data.accessToken); await authStore.fetchUserInfo(); accessStore.setAccessCodes(await getAccessCodesApi()); }
-        catch { /* 未登录时正常进入登录页。 */ }
+        try {
+          const response = await refreshTokenApi();
+          accessStore.setAccessToken(response.data.accessToken);
+          await authStore.fetchUserInfo();
+          accessStore.setAccessCodes(await getAccessCodesApi());
+        } catch {
+          /* 未登录时正常进入登录页。 */
+        }
       }
     }
     // 基本路由，这些路由不需要进入权限拦截
@@ -112,11 +120,26 @@ function setupAccessGuard(router: Router) {
 
     let menuRoutes: typeof accessRoutes;
     try {
-      const layout = await requestClient.get<MenuLayoutResult>('/system/menu-layout');
-      if (!layout.ready) throw new Error('数据库菜单未初始化');
-      menuRoutes = applyLayout(accessRoutes, layout.items);
-    } catch {
-      ElMessage.error('数据库菜单加载失败，请确认已执行菜单迁移并刷新重试。');
+      const layout = await requestClient.get<MenuLayoutResult>(
+        '/system/menu-layout',
+      );
+      if (!layout.ready)
+        throw new Error('数据库菜单未初始化，请确认已执行菜单迁移。');
+      let unsupportedCount = 0;
+      menuRoutes = applyLayout(accessRoutes, layout.items, () => {
+        unsupportedCount += 1;
+      });
+      if (unsupportedCount) {
+        ElMessage.warning(
+          `有 ${unsupportedCount} 个菜单页面需要更新管理前端，已暂时隐藏，其他页面可正常使用。`,
+        );
+      }
+    } catch (error) {
+      ElMessage.error(
+        error instanceof Error
+          ? error.message
+          : '菜单加载失败，请检查网络连接和接口服务后刷新重试。',
+      );
       return false;
     }
     // 布局调整后仍执行原有权限过滤，分组不能授予页面访问权限。
