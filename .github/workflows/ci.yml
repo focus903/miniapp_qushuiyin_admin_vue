@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # 复用项目已有配置，安装 Node、pnpm 和锁定依赖。
       - name: Setup Node and dependencies
