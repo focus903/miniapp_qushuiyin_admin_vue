@@ -19,17 +19,17 @@ runs:
       run: |
         echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
-    - uses: actions/cache@v4
+    - uses: actions/cache@v5
       name: Setup pnpm cache
-      if: ${{ github.ref_name == 'main' }}
+      if: ${{ github.ref_name == 'master' }}
       with:
         path: ${{ env.STORE_PATH }}
         key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
         restore-keys: |
           ${{ runner.os }}-pnpm-store-
 
-    - uses: actions/cache/restore@v4
-      if: ${{ github.ref_name != 'main' }}
+    - uses: actions/cache/restore@v5
+      if: ${{ github.ref_name != 'master' }}
       with:
         path: ${{ env.STORE_PATH }}
         key: |
