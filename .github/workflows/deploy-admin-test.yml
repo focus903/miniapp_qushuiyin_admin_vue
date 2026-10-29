@@ -109,19 +109,47 @@ jobs:
 
           chmod 600 ~/.ssh/config
 
-      - name: Upload test site
+      - name: Upload and activate release
         shell: bash
         run: |
           set -euo pipefail
 
-          ssh admin-test-deploy \
-            'command -v rsync >/dev/null && test -w /home/wwwroot/MediaForge/creatorhub-admin-test'
+          [[ "$BUILD_SHA" =~ ^[0-9a-f]{40}$ ]]
 
+          SITE=/home/wwwroot/MediaForge/creatorhub-admin-test
+          RELEASE="$BUILD_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+
+          ssh admin-test-deploy \
+            "command -v rsync >/dev/null && mkdir -p '$SITE/releases/$RELEASE'"
+
+          # 上传到独立版本目录，完成前不影响当前网站。
           rsync -rz \
             --chmod=D755,F644 \
-            --delay-updates \
             site/ \
-            admin-test-deploy:/home/wwwroot/MediaForge/creatorhub-admin-test/
+            "admin-test-deploy:$SITE/releases/$RELEASE/"
+
+          # 保存上一版入口，然后原子切换当前版本。
+          ssh admin-test-deploy bash -s -- "$RELEASE" <<'REMOTE'
+          set -euo pipefail
+
+          SITE=/home/wwwroot/MediaForge/creatorhub-admin-test
+          RELEASE="$1"
+
+          test -s "$SITE/releases/$RELEASE/index.html"
+          test -L "$SITE/current"
+
+          PREVIOUS=$(readlink "$SITE/current")
+
+          ln -s "$PREVIOUS" "$SITE/.previous-$RELEASE"
+          mv -Tf "$SITE/.previous-$RELEASE" "$SITE/previous"
+
+          ln -s "releases/$RELEASE" "$SITE/.current-$RELEASE"
+          mv -Tf "$SITE/.current-$RELEASE" "$SITE/current"
+
+          echo "Activated release: $RELEASE"
+          REMOTE
+
+          echo "部署版本：$RELEASE" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify deployed page
         shell: bash
