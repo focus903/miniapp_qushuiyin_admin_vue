@@ -1,6 +1,11 @@
 name: Deploy Admin Test
 
 on:
+  workflow_run:
+    workflows: ['Admin CI']
+    types: [completed]
+    branches: [master]
+    
   workflow_dispatch:
     inputs:
       run_id:
@@ -20,7 +25,16 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to test site
-    if: github.ref == 'refs/heads/master'
+    #if: github.ref == 'refs/heads/master'
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push'
+        )
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -29,7 +43,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RUN_ID: ${{ inputs.run_id }}
+          #RUN_ID: ${{ inputs.run_id }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
         shell: bash
         run: |
           set -euo pipefail
