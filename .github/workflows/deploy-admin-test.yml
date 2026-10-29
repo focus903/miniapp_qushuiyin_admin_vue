@@ -1,0 +1,127 @@
+name: Deploy Admin Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: '已通过的 master Admin CI 运行 ID（运行页面网址中的数字）'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+# 同一时间只执行一次测试站部署。
+concurrency:
+  group: deploy-admin-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to test site
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Download verified build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ inputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+
+          gh api "repos/$GH_REPO/actions/runs/$RUN_ID" > run.json
+
+          # 只接受当前仓库 master 分支成功的 CI 推送构建。
+          jq -e '
+            .conclusion == "success" and
+            .head_branch == "master" and
+            .event == "push" and
+            .path == ".github/workflows/ci.yml"
+          ' run.json > /dev/null
+
+          BUILD_SHA=$(jq -r '.head_sha' run.json)
+
+          gh run download "$RUN_ID" \
+            --repo "$GH_REPO" \
+            --name "web-ele-dist-$BUILD_SHA" \
+            --dir site
+
+          test -s site/index.html
+
+          echo "Deploying commit: $BUILD_SHA"
+          echo "BUILD_SHA=$BUILD_SHA" >> "$GITHUB_ENV"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.TEST_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.TEST_SSH_USER }}
+          DEPLOY_PORT: ${{ secrets.TEST_SSH_PORT }}
+          DEPLOY_KEY: ${{ secrets.TEST_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.TEST_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_PORT"
+          test -n "$DEPLOY_KEY"
+          test -n "$KNOWN_HOSTS"
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/admin_test_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/admin_test_key ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<EOF
+          Host admin-test-deploy
+              HostName $DEPLOY_HOST
+              User $DEPLOY_USER
+              Port $DEPLOY_PORT
+              IdentityFile ~/.ssh/admin_test_key
+              IdentitiesOnly yes
+              StrictHostKeyChecking yes
+              BatchMode yes
+              ConnectTimeout 15
+          EOF
+
+          chmod 600 ~/.ssh/config
+
+      - name: Upload test site
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh admin-test-deploy \
+            'command -v rsync >/dev/null && test -w /home/wwwroot/MediaForge/creatorhub-admin-test'
+
+          rsync -rz \
+            --chmod=D755,F644 \
+            --delay-updates \
+            site/ \
+            admin-test-deploy:/home/wwwroot/MediaForge/creatorhub-admin-test/
+
+      - name: Verify deployed page
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl -fsSL \
+            --max-time 30 \
+            --retry 3 \
+            --retry-all-errors \
+            -o deployed-index.html \
+            "https://admin-test.linggandu.site/index.html?deploy=$BUILD_SHA"
+
+          cmp site/index.html deployed-index.html
+
+      - name: Remove SSH private key
+        if: always()
+        run: rm -f ~/.ssh/admin_test_key
