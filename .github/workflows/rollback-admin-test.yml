@@ -1,0 +1,120 @@
+name: Rollback Admin Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: '确认将测试站回滚到 previous 版本'
+        required: true
+        default: false
+        type: boolean
+
+permissions: {}
+
+# 与部署使用相同的组，避免部署和回滚同时执行。
+concurrency:
+  group: deploy-admin-test
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/master' && inputs.confirm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.TEST_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.TEST_SSH_USER }}
+          DEPLOY_PORT: ${{ secrets.TEST_SSH_PORT }}
+          DEPLOY_KEY: ${{ secrets.TEST_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.TEST_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_PORT"
+          test -n "$DEPLOY_KEY"
+          test -n "$KNOWN_HOSTS"
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/admin_test_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/admin_test_key ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<EOF
+          Host admin-test-deploy
+              HostName $DEPLOY_HOST
+              User $DEPLOY_USER
+              Port $DEPLOY_PORT
+              IdentityFile ~/.ssh/admin_test_key
+              IdentitiesOnly yes
+              StrictHostKeyChecking yes
+              BatchMode yes
+              ConnectTimeout 15
+          EOF
+
+          chmod 600 ~/.ssh/config
+
+      - name: Switch to previous release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh admin-test-deploy bash -s -- "$GITHUB_RUN_ID" <<'REMOTE'
+          set -euo pipefail
+
+          SITE=/home/wwwroot/MediaForge/creatorhub-admin-test
+          OPERATION="$1"
+
+          test -L "$SITE/current"
+          test -L "$SITE/previous"
+
+          CURRENT=$(readlink "$SITE/current")
+          TARGET=$(readlink "$SITE/previous")
+
+          # 只允许切换到站点 releases 目录内的有效版本。
+          for RELEASE in "$CURRENT" "$TARGET"; do
+            RESOLVED=$(readlink -f "$SITE/$RELEASE")
+            case "$RESOLVED" in
+              "$SITE/releases/"*) ;;
+              *) echo "版本目录无效"; exit 1 ;;
+            esac
+            test -s "$RESOLVED/index.html"
+          done
+
+          test "$CURRENT" != "$TARGET"
+
+          ln -s "$TARGET" "$SITE/.rollback-current-$OPERATION"
+          mv -Tf "$SITE/.rollback-current-$OPERATION" "$SITE/current"
+
+          ln -s "$CURRENT" "$SITE/.rollback-previous-$OPERATION"
+          mv -Tf "$SITE/.rollback-previous-$OPERATION" "$SITE/previous"
+
+          echo "Rolled back: $CURRENT -> $TARGET"
+          REMOTE
+
+      - name: Verify rolled-back page
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh admin-test-deploy \
+            'cat /home/wwwroot/MediaForge/creatorhub-admin-test/current/index.html' \
+            > expected-index.html
+
+          curl -fsSL \
+            --max-time 30 \
+            --retry 3 \
+            --retry-all-errors \
+            -o deployed-index.html \
+            "https://admin-test.linggandu.site/index.html?rollback=$GITHUB_RUN_ID"
+
+          cmp expected-index.html deployed-index.html
+
+      - name: Remove SSH private key
+        if: always()
+        run: rm -f ~/.ssh/admin_test_key
