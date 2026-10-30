@@ -50,7 +50,7 @@ jobs:
         run: pnpm --filter @vben/web-ele run build
 
       - name: Upload web-ele build
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: web-ele-dist-${{ github.sha }}
           path: apps/web-ele/dist/
