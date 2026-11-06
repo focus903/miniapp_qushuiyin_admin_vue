@@ -11,6 +11,7 @@ import AiModelConfig from '#/components/ai-model-config.vue';
 import AsrConfig from '#/components/asr-config.vue';
 import ImageProcessingConfig from '#/components/image-processing-config.vue';
 import VideoCloudConfig from '#/components/video-cloud-config.vue';
+import VideoNotesCookie from '#/components/video-notes-cookie.vue';
 const access = useAccessStore();
 const tab = ref('asr');
 const route = useRoute();
@@ -19,7 +20,7 @@ watch(
   (value) => {
     tab.value =
       typeof value === 'string' &&
-      ['asr', 'image', 'llm', 'video', 'vlm'].includes(value)
+      ['asr', 'image', 'llm', 'video', 'vlm', 'notes'].includes(value)
         ? value
         : 'asr';
   },
@@ -51,6 +52,11 @@ watch(
         </ElTabPane>
         <ElTabPane label="视频处理" name="video" lazy>
           <VideoCloudConfig
+            :disabled="!access.accessCodes.includes('app-config:update')"
+          />
+        </ElTabPane>
+        <ElTabPane label="视频总结" name="notes" lazy>
+          <VideoNotesCookie
             :disabled="!access.accessCodes.includes('app-config:update')"
           />
         </ElTabPane>

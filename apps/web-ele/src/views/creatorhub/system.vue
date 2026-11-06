@@ -63,6 +63,11 @@ const admins = ref<Admin[]>([]);
 const roles = ref<Role[]>([]);
 const permissions = ref<{ code: string; name: string }[]>([]);
 const config = ref<Config>({});
+const videoNotesLearningKeys = new Set([
+  'showVideoNotesMindmap',
+  'showVideoNotesKnowledgeGraph',
+  'showVideoNotesLearningCard',
+]);
 const visibleBusinessField = (key: string) =>
   ![
     'videoSubtitleEngine',
@@ -364,13 +369,15 @@ watch(
                   "
                 >
                   <template #label>
-                    <span class="inline-flex items-center gap-2"><IconifyIcon
+                    <span class="inline-flex items-center gap-2"
+                      ><IconifyIcon
                         v-if="outputIcons[field.key]"
                         :icon="outputIcons[field.key]!.icon"
                         :style="{ color: outputIcons[field.key]!.color }"
                         class="size-5 shrink-0"
                         aria-hidden="true"
-                      />{{ field.label }}</span>
+                      />{{ field.label }}</span
+                    >
                     <span
                       v-if="field.key === 'wxTaskMessageState'"
                       class="ml-3 inline-flex items-center gap-2 text-sm"
@@ -380,7 +387,8 @@ watch(
                           (value) =>
                             (config.wxTaskMessageStateFixed = Boolean(value))
                         "
-                      />固定使用此版本</span>
+                      />固定使用此版本</span
+                    >
                     <ElButton
                       v-if="field.key === 'wechatOutputMode'"
                       class="ml-2"
@@ -435,12 +443,22 @@ watch(
                     </RouterLink>
                     设置。
                   </p>
-                  <div class="config-grid">
+                  <div
+                    class="config-grid"
+                    :class="{
+                      'notes-config-grid': child.code === 'video_notes',
+                    }"
+                  >
                     <AppConfigField
                       v-for="field in child.fields.filter((item) =>
                         visibleBusinessField(item.key),
                       )"
                       :key="`${configGeneration}-${field.key}`"
+                      :class="{
+                        'notes-learning-switch': videoNotesLearningKeys.has(
+                          field.key,
+                        ),
+                      }"
                       :field="field"
                       :model-value="config[field.key]"
                       @update:model-value="
@@ -451,13 +469,15 @@ watch(
                       "
                     >
                       <template #label>
-                        <span class="inline-flex items-center gap-2"><IconifyIcon
+                        <span class="inline-flex items-center gap-2"
+                          ><IconifyIcon
                             v-if="outputIcons[field.key]"
                             :icon="outputIcons[field.key]!.icon"
                             :style="{ color: outputIcons[field.key]!.color }"
                             class="size-5 shrink-0"
                             aria-hidden="true"
-                          />{{ field.label }}</span>
+                          />{{ field.label }}</span
+                        >
                         <span
                           v-if="field.key === 'wxTaskMessageState'"
                           class="ml-3 inline-flex items-center gap-2 text-sm"
@@ -470,7 +490,8 @@ watch(
                                 (config.wxTaskMessageStateFixed =
                                   Boolean(value))
                             "
-                          />固定使用此版本</span>
+                          />固定使用此版本</span
+                        >
                         <ElButton
                           v-if="field.key === 'wechatOutputMode'"
                           class="ml-2"
@@ -508,8 +529,8 @@ watch(
               :disabled="busy || !!errorMessage || !configLayout.length"
               @click="saveConfig"
             >
-              保存配置
-</ElButton><ElButton @click="load">重新加载</ElButton>
+              保存配置 </ElButton
+            ><ElButton @click="load">重新加载</ElButton>
           </ElFormItem>
         </ElForm>
       </template>
@@ -538,15 +559,15 @@ watch(
               <ElOption label="启用" :value="1" /><ElOption
                 label="禁用"
                 :value="0"
-              />
-</ElSelect><ElButton
+              /> </ElSelect
+            ><ElButton
               @click="
                 page = 1;
                 load();
               "
             >
-              查询
-</ElButton><ElButton
+              查询 </ElButton
+            ><ElButton
               v-if="access.accessCodes.includes('admins:create')"
               type="primary"
               @click="editUser()"
@@ -571,8 +592,8 @@ watch(
                   :loading="saving"
                   :before-change="() => toggleAdmin(row as Admin)"
                 />
-              </template>
-</ElTableColumn><ElTableColumn label="角色">
+              </template> </ElTableColumn
+            ><ElTableColumn label="角色">
               <template #default="{ row }">
                 {{
                   row.roles
@@ -582,20 +603,20 @@ watch(
                     )
                     .join('、') || '无'
                 }}
-              </template>
-</ElTableColumn><ElTableColumn label="创建时间">
+              </template> </ElTableColumn
+            ><ElTableColumn label="创建时间">
               <template #default="{ row }">
                 {{ new Date(row.created * 1000).toLocaleString() }}
-              </template>
-</ElTableColumn><ElTableColumn
+              </template> </ElTableColumn
+            ><ElTableColumn
               v-if="canSave || access.accessCodes.includes('admins:revoke')"
               label="操作"
               width="240"
             >
               <template #default="{ row }">
                 <ElButton v-if="canSave" link @click="editUser(row as Admin)">
-                  编辑 / 重置密码
-</ElButton><ElButton
+                  编辑 / 重置密码 </ElButton
+                ><ElButton
                   v-if="access.accessCodes.includes('admins:revoke')"
                   link
                   :disabled="saving"
@@ -623,8 +644,8 @@ watch(
                 load();
               "
             >
-              首页
-</ElButton><ElButton
+              首页 </ElButton
+            ><ElButton
               size="small"
               :disabled="page >= Math.max(1, Math.ceil(total / 20))"
               @click="
@@ -647,16 +668,16 @@ watch(
             class="mb-4"
             @click="editRole()"
           >
-            新增角色
-</ElButton><ElTable :data="roles" empty-text="暂无角色">
+            新增角色 </ElButton
+          ><ElTable :data="roles" empty-text="暂无角色">
             <ElTableColumn prop="name" label="角色" /><ElTableColumn
               prop="code"
               label="代码"
             /><ElTableColumn label="权限数量">
               <template #default="{ row }">
                 {{ row.permissions.length }}
-              </template>
-</ElTableColumn><ElTableColumn label="操作">
+              </template> </ElTableColumn
+            ><ElTableColumn label="操作">
               <template #default="{ row }">
                 <ElButton
                   v-if="canSave"
@@ -704,22 +725,22 @@ watch(
             v-model="userForm.username"
             maxlength="64"
             autocomplete="off"
-          />
-</ElFormItem><ElFormItem :label="editingId ? '新密码' : '密码'">
+          /> </ElFormItem
+        ><ElFormItem :label="editingId ? '新密码' : '密码'">
           <ElInput
             v-model="userForm.password"
             type="password"
             show-password
             autocomplete="new-password"
             :placeholder="editingId ? '留空不修改；至少6位' : '至少6位'"
-          />
-</ElFormItem><ElFormItem label="启用">
+          /> </ElFormItem
+        ><ElFormItem label="启用">
           <ElSwitch
             v-model="userForm.enabled"
             :active-value="1"
             :inactive-value="0"
-          />
-</ElFormItem><ElFormItem label="角色">
+          /> </ElFormItem
+        ><ElFormItem label="角色">
           <ElSelect v-model="userForm.roles" multiple style="width: 100%">
             <ElOption
               v-for="role in roles"
@@ -728,9 +749,10 @@ watch(
               :value="role.code"
             />
           </ElSelect>
-        </ElFormItem>
-</ElForm><template #footer>
-        <ElButton @click="userDialog = false">取消</ElButton><ElButton type="primary" :loading="saving" @click="saveUser">
+        </ElFormItem> </ElForm
+      ><template #footer>
+        <ElButton @click="userDialog = false">取消</ElButton
+        ><ElButton type="primary" :loading="saving" @click="saveUser">
           保存
         </ElButton>
       </template>
@@ -742,18 +764,19 @@ watch(
             v-model="roleForm.code"
             :disabled="editingRole"
             placeholder="3至64位小写英文、数字、下划线"
-          />
-</ElFormItem><ElFormItem label="中文名称">
-          <ElInput v-model="roleForm.name" maxlength="100" />
-</ElFormItem><ElFormItem label="权限">
+          /> </ElFormItem
+        ><ElFormItem label="中文名称">
+          <ElInput v-model="roleForm.name" maxlength="100" /> </ElFormItem
+        ><ElFormItem label="权限">
           <PermissionTree
             v-if="roleDialog"
             v-model="roleForm.permissions"
             :permissions="permissions"
           />
-        </ElFormItem>
-</ElForm><template #footer>
-        <ElButton @click="roleDialog = false">取消</ElButton><ElButton type="primary" :loading="saving" @click="saveRole">
+        </ElFormItem> </ElForm
+      ><template #footer>
+        <ElButton @click="roleDialog = false">取消</ElButton
+        ><ElButton type="primary" :loading="saving" @click="saveRole">
           保存
         </ElButton>
       </template>
@@ -856,5 +879,23 @@ watch(
   font-size: 12px;
   line-height: 1.6;
   color: var(--el-text-color-secondary);
+}
+</style>
+
+<style scoped>
+.notes-config-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.notes-config-grid > :deep(.el-form-item) {
+  grid-column: 1 / -1;
+}
+.notes-config-grid > :deep(.notes-learning-switch) {
+  grid-column: auto;
+  padding: 10px;
+  gap: 6px;
+}
+.notes-config-grid > :deep(.notes-learning-switch .el-form-item__label) {
+  font-size: 13px;
 }
 </style>
