@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { ConfigSchema, ConfigValues } from '#/utils/app-config-layout';
+import type {
+  ConfigField,
+  ConfigSchema,
+  ConfigValues,
+} from '#/utils/app-config-layout';
 
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -68,6 +72,24 @@ const videoNotesLearningKeys = new Set([
   'showVideoNotesKnowledgeGraph',
   'showVideoNotesLearningCard',
 ]);
+const videoNotesFieldOrder = new Map(
+  [
+    'showVideoNotesSubtitles',
+    ...videoNotesLearningKeys,
+    'videoNotesName',
+    'videoNotesInputHint',
+    'videoNotesPlaceholder',
+  ].map((key, index) => [key, index]),
+);
+function videoNotesChildFields(fields: ConfigField[]) {
+  return fields
+    .filter((field) => field.key !== 'showVideoNotes')
+    .sort(
+      (a, b) =>
+        (videoNotesFieldOrder.get(a.key) ?? videoNotesFieldOrder.size) -
+        (videoNotesFieldOrder.get(b.key) ?? videoNotesFieldOrder.size),
+    );
+}
 const visibleBusinessField = (key: string) =>
   ![
     'videoSubtitleEngine',
@@ -443,22 +465,40 @@ watch(
                     </RouterLink>
                     设置。
                   </p>
-                  <div
-                    class="config-grid"
-                    :class="{
-                      'notes-config-grid': child.code === 'video_notes',
-                    }"
-                  >
+                  <div v-if="child.code === 'video_notes'" class="notes-settings">
+                    <AppConfigField
+                      v-for="field in child.fields.filter((item) => item.key === 'showVideoNotes')"
+                      :key="`${configGeneration}-${field.key}`"
+                      class="notes-master-switch"
+                      :field="field"
+                      :model-value="config[field.key]"
+                      @update:model-value="(value) => (config[field.key] = value)"
+                    >
+                      <template #label>显示视频笔记（总开关）</template>
+                    </AppConfigField>
+                    <fieldset
+                      class="notes-config-grid"
+                      :disabled="config.showVideoNotes === false"
+                      :inert="config.showVideoNotes === false || undefined"
+                      aria-label="视频笔记子功能与文案"
+                    >
+                      <AppConfigField
+                        v-for="field in videoNotesChildFields(child.fields)"
+                        :key="`${configGeneration}-${field.key}`"
+                        :class="{ 'notes-learning-switch': videoNotesLearningKeys.has(field.key) }"
+                        :field="field"
+                        :model-value="config[field.key]"
+                        @update:model-value="(value) => (config[field.key] = value)"
+                        @validity-change="(valid) => (invalidFields[field.key] = !valid)"
+                      />
+                    </fieldset>
+                  </div>
+                  <div v-else class="config-grid">
                     <AppConfigField
                       v-for="field in child.fields.filter((item) =>
                         visibleBusinessField(item.key),
                       )"
                       :key="`${configGeneration}-${field.key}`"
-                      :class="{
-                        'notes-learning-switch': videoNotesLearningKeys.has(
-                          field.key,
-                        ),
-                      }"
                       :field="field"
                       :model-value="config[field.key]"
                       @update:model-value="
@@ -883,12 +923,34 @@ watch(
 </style>
 
 <style scoped>
+.notes-settings {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.notes-settings > :deep(.notes-master-switch) {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  border-radius: 0;
+}
 .notes-config-grid {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
+.notes-config-grid:disabled {
+  opacity: 0.55;
+  background: var(--el-fill-color-light);
+}
 .notes-config-grid > :deep(.el-form-item) {
   grid-column: 1 / -1;
+  min-width: 0;
+  margin-bottom: 0;
 }
 .notes-config-grid > :deep(.notes-learning-switch) {
   grid-column: auto;

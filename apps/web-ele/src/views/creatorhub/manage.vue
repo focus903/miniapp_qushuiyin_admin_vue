@@ -33,7 +33,7 @@ const schemas: Record<string,string[]> = {
 };
 const columns = computed(() => schemas[resource.value] || []);
 const hints: Record<string,string> = {
- 'feature-billing':'费用按用量向上取整。例如每 30 秒 30 积分，31 秒收取 60 积分。关闭计费表示免费，不代表关闭小程序功能。',
+ 'feature-billing':'常规功能按计费单位向上取整。视频笔记的时长费用按秒折算并向上取整到积分，最低收取一个单位的积分。关闭计费后该功能免费。',
  'point-rewards':'权重越大越靠前，相同权重按英文标识排序。新人注册奖励首次注册发放一次（含开发登录），不受每日次数影响；关闭期间注册及老用户不补发。签到按北京时间自然日领取；每日次数为 0 时不能领取。激励广告需接入可信的广告验证服务后才可用。',
  'point-packages':'支持拖动排序，权重越大越靠前；相同权重按英文标识排序。基础积分与赠送积分合计发放。微信道具 ID 和价格须与微信对应环境的道具配置一致；道具 ID 留空禁止在线支付。',
  'membership-plans':'有效天数 0 表示永久有效，正数按 24 小时计算；禁用套餐后停止新开通，已有会员保留至到期。微信道具 ID 和价格须与微信对应环境的道具配置一致；道具 ID 留空禁止在线支付。',
@@ -41,13 +41,28 @@ const hints: Record<string,string> = {
  logs:'记录后台配置、权限和人工发放等操作；不记录密码和密钥。',
 };
 const canEdit = computed(() => access.accessCodes.includes(`${resource.value}:update`) && resource.value!=='logs');
-const filtered = computed(() => rows.value.filter(row =>
+const matches = computed(() => rows.value.filter(row =>
  (enabledFilter.value===undefined || Number(row.enabled)===enabledFilter.value) &&
  (!keyword.value.trim() || columns.value.some(key=>String(display(row,key)).toLowerCase().includes(keyword.value.trim().toLowerCase())))
 ));
+const isVideoNotesRule = (row: Row) => String(row.feature).startsWith('video_notes_');
+const filtered = computed(() => resource.value === 'feature-billing'
+ ? matches.value.filter(row => !isVideoNotesRule(row)) : matches.value);
+const videoNotesRows = computed(() => resource.value === 'feature-billing'
+ ? matches.value.filter(isVideoNotesRule) : []);
 const visibleRows = computed(() => resource.value==='logs'?rows.value:filtered.value.slice((page.value-1)*20,page.value*20));
 const secondsAllowed = computed(() => ['remove_subtitle','remove_watermark','extract_text_upload'].includes(String(keys.value.feature)));
-const allowedUnits = computed(() => keys.value.feature==='tts'?['count','characters']:secondsAllowed.value?['count','seconds']:['count']);
+const allowedUnits = computed(() => {
+ const feature = String(keys.value.feature);
+ if (feature === 'tts') return ['count', 'characters'];
+ return secondsAllowed.value || ['video_notes_report', 'video_notes_subtitles'].includes(feature)
+  ? ['count', 'seconds'] : ['count'];
+});
+const tableSections = computed(() => {
+ const sections = [{label: '', rows: visibleRows.value}];
+ if (videoNotesRows.value.length) sections.push({label: '视频笔记', rows: videoNotesRows.value});
+ return sections;
+});
 const unitLabels: Record<string,string> = {count:'次',seconds:'秒',characters:'字符'};
 function display(row:Row,key:string) {
  const value=row[key];
@@ -123,7 +138,9 @@ watch(resource,()=>{packageOrderOpen.value=false;entitlementOpen.value=false;pag
     <EntrySwitch v-if="resource==='point-packages'" field="showDoCharge" label="显示积分充值入口" />
     <EntrySwitch v-if="resource==='membership-plans'" field="showVipCenter" label="显示会员开通入口" />
    </div>
-   <ElTable v-loading="busy" :data="visibleRows" stripe border empty-text="暂无符合条件的记录">
+   <template v-for="section in tableSections" :key="section.label">
+   <h3 v-if="section.label" class="mb-2 mt-5 font-semibold">{{section.label}}</h3>
+   <ElTable v-loading="busy" :data="section.rows" stripe border empty-text="暂无符合条件的记录">
     <ElTableColumn v-for="key in columns" :key="key" :prop="key" :label="fields[key] || key" :min-width="key==='admin_id'?260:140" show-overflow-tooltip>
      <template #default="scope">
       <ElSwitch v-if="isSwitch(key)" :model-value="Number(scope.row[key])" :active-value="1" :inactive-value="0" :active-text="key==='unlimited'?'不限':'启用'" :inactive-text="key==='unlimited'?'有限':'禁用'" inline-prompt :aria-label="fields[key]" :disabled="!canEdit" :loading="switching.has(switchKey(scope.row,key))" :before-change="()=>toggle(scope.row,key)"/>
@@ -134,6 +151,7 @@ watch(resource,()=>{packageOrderOpen.value=false;entitlementOpen.value=false;pag
     </ElTableColumn>
     <ElTableColumn v-if="canEdit || resource==='logs'" label="操作" fixed="right" width="100"><template #default="scope"><ElButton v-if="canEdit" link type="primary" @click="edit(scope.row)">编辑</ElButton><ElButton v-else link type="primary" @click="detail=scope.row">详情</ElButton></template></ElTableColumn>
    </ElTable>
+   </template>
    <ElPagination v-if="resource!=='logs'" v-model:current-page="page" :page-size="20" :total="filtered.length" layout="total, prev, pager, next, jumper, slot" class="mt-4" style="justify-content:center;flex-wrap:wrap;row-gap:8px"><ElButton size="small" :disabled="page<=1" @click="page=1">首页</ElButton><ElButton size="small" :disabled="page>=Math.max(1,Math.ceil((filtered.length)/(20)))" @click="page=Math.max(1,Math.ceil((filtered.length)/(20)))">末页</ElButton></ElPagination>
    <ElPagination v-else v-model:current-page="page" :page-size="20" :total="logTotal" :disabled="busy" layout="total, prev, pager, next, jumper, slot" class="mt-4" @current-change="load" style="justify-content:center;flex-wrap:wrap;row-gap:8px"><ElButton size="small" :disabled="page<=1" @click="page=1;load()">首页</ElButton><ElButton size="small" :disabled="page>=Math.max(1,Math.ceil((logTotal)/(20)))" @click="page=Math.max(1,Math.ceil((logTotal)/(20)));load()">末页</ElButton></ElPagination>
   </ElCard>
