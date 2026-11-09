@@ -76,6 +76,7 @@ const videoNotesLearningKeys = new Set([
 const videoNotesFieldOrder = new Map(
   [
     'showVideoNotesSubtitles',
+    'videoNotesDirectImages',
     ...videoNotesLearningKeys,
     'videoNotesName',
     'videoNotesInputHint',
