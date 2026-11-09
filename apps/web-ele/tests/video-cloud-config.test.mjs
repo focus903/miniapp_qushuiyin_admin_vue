@@ -13,7 +13,7 @@ import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 
-function setup() {
+function setup({ active = true, mode = 'cloud' } = {}) {
   const filename = path.join(
     testDirectory,
     '../src/components/video-cloud-config.vue',
@@ -69,6 +69,7 @@ function setup() {
   };
   const saved = {
     ...tencent,
+    mode,
     local_values: {
       videoSubtitleEngine: 'lama',
       videoWatermarkEngine: 'opencv',
@@ -83,29 +84,124 @@ function setup() {
       calls.push(['put', url, data]);
       return structuredClone(saved);
     },
-    post: async (url, data) => {
-      calls.push(['post', url, data]);
+    post: async (url, data, options) => {
+      calls.push(['post', url, data, options]);
+      if (url.endsWith('/check-environment')) {
+        return {
+          subtitle: { ready: null, message: '请在远程节点验证' },
+          watermark: { ready: true, message: 'OpenCV 可用' },
+        };
+      }
       return { ok: true, message: '检查通过' };
     },
   };
   const module = { exports: {} };
   vm.runInNewContext(code, {
+    AbortController,
     module,
     exports: module.exports,
     require(name) {
-      if (name === 'vue') return { ...vue, onMounted() {} };
+      if (name === 'vue')
+        return { ...vue, onActivated() {}, onDeactivated() {}, onMounted() {} };
       if (name === 'element-plus') return { ElMessage: { success() {} } };
       if (name === '#/api/request') return { requestClient: client };
+      if (name === '#/components/copy-value.vue') return {};
       throw new Error(name);
     },
   });
   const scope = vue.effectScope();
-  const props = vue.reactive({ disabled: false });
+  const props = vue.reactive({ active, disabled: false });
   const state = scope.run(() =>
     module.exports.default.setup(props, { expose() {} }),
   );
-  return { state, calls, scope, props };
+  return { client, state, calls, scope, props };
 }
+
+async function settle() {
+  await new Promise(setImmediate);
+}
+
+test('local environment checks follow the tab and draft selections without saving or sending credentials', async () => {
+  const h = setup({ active: false, mode: 'local' });
+  try {
+    h.props.disabled = true;
+    await h.state.load();
+    await settle();
+    assert.equal(h.calls.length, 0);
+
+    h.props.active = true;
+    await settle();
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0][0], 'post');
+    assert.equal(h.calls[0][1], '/system/video-cloud-config/check-environment');
+    assert.deepEqual(JSON.parse(JSON.stringify(h.calls[0][2])), {
+      subtitle_execution: 'worker',
+      watermark_execution: 'local',
+      local_values: {
+        videoSubtitleEngine: 'lama',
+        videoWatermarkEngine: 'opencv',
+      },
+    });
+    assert.equal(h.state.environment.value.subtitle.ready, null);
+
+    h.props.disabled = false;
+    h.state.localValues.videoSubtitleEngine = 'opencv';
+    h.state.form.watermark_execution = 'worker';
+    await settle();
+    assert.equal(h.calls.length, 2);
+    assert.equal(h.calls[1][2].local_values.videoSubtitleEngine, 'opencv');
+    assert.equal(h.calls[1][2].watermark_execution, 'worker');
+
+    h.state.form.mode = 'cloud';
+    await settle();
+    assert.equal(h.calls.length, 2);
+    h.state.form.mode = 'local';
+    await settle();
+    h.props.active = false;
+    await settle();
+    h.props.active = true;
+    await settle();
+    assert.equal(h.calls.length, 4);
+    assert.ok(
+      h.calls.every(
+        ([method, url]) =>
+          method === 'post' && url.endsWith('/check-environment'),
+      ),
+    );
+  } finally {
+    h.scope.stop();
+  }
+});
+
+test('an older environment response cannot replace a newer check', async () => {
+  const h = setup({ mode: 'local' });
+  try {
+    const pending = [];
+    h.client.post = (_url, _data, { signal }) =>
+      new Promise((resolve) => pending.push({ resolve, signal }));
+    await h.state.load();
+    await settle();
+    assert.equal(pending.length, 1);
+    h.state.form.subtitle_execution = 'local';
+    await settle();
+    assert.equal(pending.length, 2);
+    assert.equal(pending[0].signal.aborted, true);
+    pending[1].resolve({
+      subtitle: { ready: true, message: '本机已就绪' },
+      watermark: { ready: true, message: '本机已就绪' },
+    });
+    await settle();
+    pending[0].resolve({
+      subtitle: { ready: null, message: '请在远程节点验证' },
+      watermark: { ready: true, message: '本机已就绪' },
+    });
+    await settle();
+    assert.equal(h.state.environment.value.subtitle.message, '本机已就绪');
+    assert.equal(h.state.environmentChecking.value, false);
+  } finally {
+    h.scope.stop();
+  }
+});
 
 test('check uses unsaved form without saving; save restores masks', async () => {
   const h = setup();

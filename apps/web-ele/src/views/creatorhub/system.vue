@@ -30,6 +30,7 @@ import {
   ElTableColumn,
   ElTabPane,
   ElTabs,
+  ElTag,
 } from 'element-plus';
 
 import { requestClient } from '#/api/request';
@@ -398,7 +399,13 @@ watch(
                         :style="{ color: outputIcons[field.key]!.color }"
                         class="size-5 shrink-0"
                         aria-hidden="true"
-                      />{{ field.label }}</span
+                      />{{ field.label }}<ElTag
+                        v-if="field.key === 'wechatOutputMode'"
+                        size="small"
+                        type="success"
+                        effect="plain"
+                        >公众号图文</ElTag
+                      ></span
                     >
                     <span
                       v-if="field.key === 'wxTaskMessageState'"
@@ -516,7 +523,13 @@ watch(
                             :style="{ color: outputIcons[field.key]!.color }"
                             class="size-5 shrink-0"
                             aria-hidden="true"
-                          />{{ field.label }}</span
+                          />{{ field.label }}<ElTag
+                            v-if="field.key === 'wechatOutputMode'"
+                            size="small"
+                            type="success"
+                            effect="plain"
+                            >公众号图文</ElTag
+                          ></span
                         >
                         <span
                           v-if="field.key === 'wxTaskMessageState'"

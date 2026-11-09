@@ -52,16 +52,18 @@ watch(
         </ElTabPane>
         <ElTabPane label="视频处理" name="video" lazy>
           <VideoCloudConfig
-            :disabled="!access.accessCodes.includes('app-config:update')"
-          />
-        </ElTabPane>
-        <ElTabPane label="视频总结" name="notes" lazy>
-          <VideoNotesCookie
+            :active="tab === 'video'"
             :disabled="!access.accessCodes.includes('app-config:update')"
           />
         </ElTabPane>
         <ElTabPane label="图片处理" name="image" lazy>
           <ImageProcessingConfig
+            :active="tab === 'image'"
+            :disabled="!access.accessCodes.includes('app-config:update')"
+          />
+        </ElTabPane>
+        <ElTabPane label="视频笔记" name="notes" lazy>
+          <VideoNotesCookie
             :disabled="!access.accessCodes.includes('app-config:update')"
           />
         </ElTabPane>

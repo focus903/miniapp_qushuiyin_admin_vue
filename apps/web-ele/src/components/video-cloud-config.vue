@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue';
 
 import {
   ElAlert,
@@ -16,6 +24,7 @@ import {
 } from 'element-plus';
 
 import { requestClient } from '#/api/request';
+import CopyValue from '#/components/copy-value.vue';
 
 type Provider = 'aliyun_ims' | 'tencent_mps' | 'volc_mediakit';
 type Form = {
@@ -25,6 +34,8 @@ type Form = {
   aliyun_subtitle_model: string;
   aliyun_subtitle_template_id: string;
   aliyun_watermark_template_id: string;
+  cos_bucket: string;
+  cos_region: string;
   subtitle_execution: 'local' | 'worker';
   watermark_execution: 'local' | 'worker';
   mode: 'cloud' | 'local';
@@ -50,7 +61,31 @@ type Status = Profile & {
   provider_configs: Record<Provider, Profile>;
 };
 type CheckResult = { ok: boolean; message: string; elapsed_ms?: number };
-const props = defineProps<{ disabled?: boolean }>();
+type EnvironmentItem = {
+  install_command?: string;
+  install_hint?: string;
+  message: string;
+  ready: boolean | null;
+};
+const props = defineProps<{ active: boolean; disabled?: boolean }>();
+const localTasks = [
+  {
+    key: 'subtitle',
+    label: '视频去字幕',
+    engine: 'videoSubtitleEngine',
+    execution: 'subtitle_execution',
+  },
+  {
+    key: 'watermark',
+    label: '视频去水印',
+    engine: 'videoWatermarkEngine',
+    execution: 'watermark_execution',
+  },
+] as const;
+type EnvironmentChecks = Record<
+  (typeof localTasks)[number]['key'],
+  EnvironmentItem
+>;
 const providers = [
   { key: 'aliyun_ims' as const, label: '阿里云 IMS' },
   { key: 'tencent_mps' as const, label: '腾讯云 MPS' },
@@ -64,6 +99,8 @@ function defaults(provider: Provider): Form {
     aliyun_subtitle_model: 'algo-video-detext-new',
     aliyun_subtitle_template_id: '',
     aliyun_watermark_template_id: '',
+    cos_bucket: '',
+    cos_region: '',
     mode: 'local',
     subtitle_execution: 'local',
     watermark_execution: 'local',
@@ -90,6 +127,10 @@ const saving = ref(false);
 const checking = ref(false);
 const errorMessage = ref('');
 const result = ref<CheckResult | null>(null);
+const pageActive = ref(true);
+const environment = ref<EnvironmentChecks>();
+const environmentChecking = ref(false);
+const environmentError = ref('');
 const busy = computed(
   () => props.disabled || loading.value || saving.value || checking.value,
 );
@@ -114,6 +155,8 @@ function payload() {
       ...common,
       secret_id: form.secret_id,
       secret_key: form.secret_key,
+      cos_bucket: form.cos_bucket.trim(),
+      cos_region: form.cos_region.trim(),
       subtitle_template_id: form.subtitle_template_id,
       watermark_template_id: form.watermark_template_id,
     };
@@ -200,7 +243,7 @@ async function save() {
   }
 }
 async function check() {
-  if (busy.value || !status.value) return;
+  if (busy.value || !status.value || form.mode !== 'cloud') return;
   checking.value = true;
   errorMessage.value = '';
   result.value = null;
@@ -222,7 +265,59 @@ async function check() {
 watch(form, () => {
   result.value = null;
 });
+watch(
+  [
+    () =>
+      pageActive.value &&
+      props.active &&
+      !!status.value &&
+      !loading.value &&
+      form.mode === 'local',
+    () => form.subtitle_execution,
+    () => form.watermark_execution,
+    () => localValues.videoSubtitleEngine,
+    () => localValues.videoWatermarkEngine,
+  ],
+  async ([shouldCheck], _, onCleanup) => {
+    environmentChecking.value = shouldCheck;
+    environment.value = undefined;
+    environmentError.value = '';
+    if (!shouldCheck) return;
+
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    try {
+      const response = await requestClient.post<EnvironmentChecks>(
+        '/system/video-cloud-config/check-environment',
+        {
+          local_values: { ...localValues },
+          subtitle_execution: form.subtitle_execution,
+          watermark_execution: form.watermark_execution,
+        },
+        { signal: controller.signal },
+      );
+      if (!controller.signal.aborted) environment.value = response;
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        environmentError.value =
+          error instanceof Error ? error.message : '视频运行环境检查失败';
+      }
+    } finally {
+      if (!controller.signal.aborted) environmentChecking.value = false;
+    }
+  },
+);
+function environmentLabel(item: EnvironmentItem) {
+  if (item.ready === null) return '未验证远程环境';
+  return item.ready ? '检查通过' : '未就绪';
+}
 onMounted(load);
+onActivated(() => {
+  pageActive.value = true;
+});
+onDeactivated(() => {
+  pageActive.value = false;
+});
 </script>
 <template>
   <ElForm v-loading="loading" label-position="top" :disabled="busy">
@@ -249,38 +344,74 @@ onMounted(load);
       </p>
     </ElFormItem>
     <ElAlert
-      title="本地模型的执行位置保存后对新任务生效；云端 API 当前提供配置保存与检查，实际云端擦除执行尚未接入，云端模式暂沿用下方保存的本地执行位置。"
+      v-if="form.mode === 'cloud'"
+      :title="
+        isTencent
+          ? '腾讯云 MPS 使用 COS 传入原视频并取回擦除结果，配置保存后对新任务生效。'
+          : '此供应商可保存配置，新任务暂按已保存的本地处理设置执行。'
+      "
       type="info"
       :closable="false"
       class="mb-4"
     />
     <template v-if="form.mode === 'local'">
+      <p class="help" aria-live="polite">
+        {{
+          environmentChecking
+            ? '正在自动检查视频运行环境…'
+            : '进入视频处理或切换选项时，自动检查当前后端的运行环境。'
+        }}
+      </p>
+      <ElAlert
+        v-if="environmentError"
+        :title="environmentError"
+        type="error"
+        :closable="false"
+        class="mb-4"
+      />
       <div class="fields local-sections">
-        <section class="local-section">
-          <h3>视频去字幕</h3>
+        <section
+          v-for="task in localTasks"
+          :key="task.key"
+          class="local-section"
+        >
+          <h3>{{ task.label }}</h3>
           <ElFormItem label="本地修复引擎">
-            <ElRadioGroup v-model="localValues.videoSubtitleEngine">
-              <ElRadio value="lama">LaMa（效果优先）</ElRadio><ElRadio value="opencv"> OpenCV（CPU，速度优先） </ElRadio>
+            <ElRadioGroup v-model="localValues[task.engine]">
+              <ElRadio value="lama">LaMa（效果优先）</ElRadio>
+              <ElRadio value="opencv">OpenCV（CPU，速度优先）</ElRadio>
             </ElRadioGroup>
           </ElFormItem>
           <ElFormItem label="执行位置">
-            <ElRadioGroup v-model="form.subtitle_execution">
-              <ElRadio value="local">local · 本机处理</ElRadio><ElRadio value="worker"> worker · 远程工作节点 </ElRadio>
+            <ElRadioGroup v-model="form[task.execution]">
+              <ElRadio value="local">local · 本机处理</ElRadio>
+              <ElRadio value="worker">worker · 远程工作节点</ElRadio>
             </ElRadioGroup>
           </ElFormItem>
-        </section>
-        <section class="local-section">
-          <h3>视频去水印</h3>
-          <ElFormItem label="本地修复引擎">
-            <ElRadioGroup v-model="localValues.videoWatermarkEngine">
-              <ElRadio value="lama">LaMa（效果优先）</ElRadio><ElRadio value="opencv"> OpenCV（CPU，速度优先） </ElRadio>
-            </ElRadioGroup>
-          </ElFormItem>
-          <ElFormItem label="执行位置">
-            <ElRadioGroup v-model="form.watermark_execution">
-              <ElRadio value="local">local · 本机处理</ElRadio><ElRadio value="worker"> worker · 远程工作节点 </ElRadio>
-            </ElRadioGroup>
-          </ElFormItem>
+          <template v-if="environment">
+            <ElAlert
+              :title="`${environmentLabel(environment[task.key])}：${environment[task.key].message}`"
+              :type="
+                environment[task.key].ready === true ? 'success' : 'warning'
+              "
+              :closable="false"
+            />
+            <p v-if="environment[task.key].install_hint" class="help">
+              {{ environment[task.key].install_hint }}
+            </p>
+            <div
+              v-if="environment[task.key].install_command"
+              class="install-guide"
+            >
+              <CopyValue
+                :value="environment[task.key].install_command"
+                label="复制安装命令"
+              >
+                安装命令
+              </CopyValue>
+              <pre>{{ environment[task.key].install_command }}</pre>
+            </div>
+          </template>
         </section>
       </div>
       <p class="help">
@@ -316,6 +447,17 @@ onMounted(load);
         <ElInput :model-value="endpoint" disabled />
       </ElFormItem>
       <template v-if="isTencent">
+        <ElAlert
+          v-if="
+            status?.mode === 'cloud' &&
+            status.provider === 'tencent_mps' &&
+            !status.execution_ready
+          "
+          title="已保存的腾讯云 MPS 配置还不完整。请补齐密钥、两种模板 ID 和 COS 配置后再提交新任务。"
+          type="warning"
+          :closable="false"
+          class="mb-4"
+        />
         <div class="fields">
           <ElFormItem label="SecretId">
             <ElInput
@@ -358,6 +500,22 @@ onMounted(load);
               ID。自然修复背景需选择对应的无痕擦除能力。0
               表示未填写，可先保存凭据，填写两个模板后再检查。
             </p>
+          </ElFormItem>
+          <ElFormItem label="COS 桶名">
+            <ElInput
+              v-model="form.cos_bucket"
+              placeholder="例如 mps-video-1250000000"
+              maxlength="63"
+            />
+            <p class="help">填写包含 APPID 的完整桶名。可使用私有桶。</p>
+          </ElFormItem>
+          <ElFormItem label="COS 地域">
+            <ElInput
+              v-model="form.cos_region"
+              placeholder="例如 ap-guangzhou"
+              maxlength="32"
+            />
+            <p class="help">填写桶所在地域的代码，可在 COS 存储桶列表中查看。</p>
           </ElFormItem>
         </div>
         <p class="help">
@@ -504,7 +662,7 @@ onMounted(load);
         检查配置
       </ElButton>
       <p class="help">
-        使用当前表单检查，不自动保存。腾讯云检查鉴权、模板查询权限和擦除类型；火山检查鉴权与已有任务查询权限；阿里云目前仅检查配置格式，尚未验证云端鉴权。不提交视频任务，不扣用户积分；检查通过不代表实际擦除权限、输出存储和效果已验证。
+        点击后使用当前表单检查云端配置，不自动保存。腾讯云检查鉴权、模板查询权限和擦除类型；火山检查鉴权与已有任务查询权限；阿里云目前仅检查配置格式，尚未验证云端鉴权。不提交视频任务，不扣用户积分；检查通过不代表实际擦除权限、输出存储和效果已验证。
       </p>
       <ElAlert
         v-if="result"
@@ -555,6 +713,21 @@ onMounted(load);
   margin: 0 0 18px;
   font-size: 16px;
   font-weight: 600;
+}
+
+.install-guide {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.install-guide pre {
+  padding: 8px 10px;
+  margin: 4px 0 0;
+  color: var(--el-text-color-primary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
 }
 
 .providers {
