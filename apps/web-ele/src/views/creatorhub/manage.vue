@@ -45,12 +45,13 @@ const matches = computed(() => rows.value.filter(row =>
  (enabledFilter.value===undefined || Number(row.enabled)===enabledFilter.value) &&
  (!keyword.value.trim() || columns.value.some(key=>String(display(row,key)).toLowerCase().includes(keyword.value.trim().toLowerCase())))
 ));
-const isVideoNotesRule = (row: Row) => String(row.feature).startsWith('video_notes_');
-const filtered = computed(() => resource.value === 'feature-billing'
- ? matches.value.filter(row => !isVideoNotesRule(row)) : matches.value);
-const videoNotesRows = computed(() => resource.value === 'feature-billing'
- ? matches.value.filter(isVideoNotesRule) : []);
-const visibleRows = computed(() => resource.value==='logs'?rows.value:filtered.value.slice((page.value-1)*20,page.value*20));
+const visibleRows = computed(() => resource.value === 'logs' ? rows.value : matches.value.slice((page.value - 1) * 20, page.value * 20));
+const billingSections = [
+ {label:'分享链接处理', features:['parse_share','extract_text_link']},
+ {label:'视频上传处理', features:['remove_watermark','remove_subtitle','extract_text_upload']},
+ {label:'图片处理', features:['image_repair','image_large','image_compress','image_ocr']},
+ {label:'文字配音', features:['tts']},
+];
 const secondsAllowed = computed(() => ['remove_subtitle','remove_watermark','extract_text_upload'].includes(String(keys.value.feature)));
 const allowedUnits = computed(() => {
  const feature = String(keys.value.feature);
@@ -59,9 +60,18 @@ const allowedUnits = computed(() => {
   ? ['count', 'seconds'] : ['count'];
 });
 const tableSections = computed(() => {
- const sections = [{label: '', rows: visibleRows.value}];
- if (videoNotesRows.value.length) sections.push({label: '视频笔记', rows: videoNotesRows.value});
- return sections;
+ if (resource.value !== 'feature-billing') return [{label:'', rows:visibleRows.value}];
+ const groups = new Map<string, Row[]>(billingSections.map(({label}) => [label, []]));
+ groups.set('视频笔记', []);
+ groups.set('其他功能', []);
+ for (const row of matches.value) {
+  const feature = String(row.feature);
+  const label = billingSections.find(section => section.features.includes(feature))?.label
+    ?? (feature.startsWith('video_notes_') ? '视频笔记' : '其他功能');
+  groups.get(label)!.push(row);
+ }
+ const sections = [...groups].filter(([, items]) => items.length).map(([label, items]) => ({label, rows:items}));
+ return sections.length ? sections : [{label:'', rows:[]}];
 });
 const unitLabels: Record<string,string> = {count:'次',seconds:'秒',characters:'字符'};
 function display(row:Row,key:string) {
@@ -152,8 +162,8 @@ watch(resource,()=>{packageOrderOpen.value=false;entitlementOpen.value=false;pag
     <ElTableColumn v-if="canEdit || resource==='logs'" label="操作" fixed="right" width="100"><template #default="scope"><ElButton v-if="canEdit" link type="primary" @click="edit(scope.row)">编辑</ElButton><ElButton v-else link type="primary" @click="detail=scope.row">详情</ElButton></template></ElTableColumn>
    </ElTable>
    </template>
-   <ElPagination v-if="resource!=='logs'" v-model:current-page="page" :page-size="20" :total="filtered.length" layout="total, prev, pager, next, jumper, slot" class="mt-4" style="justify-content:center;flex-wrap:wrap;row-gap:8px"><ElButton size="small" :disabled="page<=1" @click="page=1">首页</ElButton><ElButton size="small" :disabled="page>=Math.max(1,Math.ceil((filtered.length)/(20)))" @click="page=Math.max(1,Math.ceil((filtered.length)/(20)))">末页</ElButton></ElPagination>
-   <ElPagination v-else v-model:current-page="page" :page-size="20" :total="logTotal" :disabled="busy" layout="total, prev, pager, next, jumper, slot" class="mt-4" @current-change="load" style="justify-content:center;flex-wrap:wrap;row-gap:8px"><ElButton size="small" :disabled="page<=1" @click="page=1;load()">首页</ElButton><ElButton size="small" :disabled="page>=Math.max(1,Math.ceil((logTotal)/(20)))" @click="page=Math.max(1,Math.ceil((logTotal)/(20)));load()">末页</ElButton></ElPagination>
+   <ElPagination v-if="resource!=='logs' && resource!=='feature-billing'" v-model:current-page="page" :page-size="20" :total="matches.length" layout="total, prev, pager, next, jumper, slot" class="mt-4" style="justify-content:center;flex-wrap:wrap;row-gap:8px"><ElButton size="small" :disabled="page<=1" @click="page=1">首页</ElButton><ElButton size="small" :disabled="page>=Math.max(1,Math.ceil((matches.length)/(20)))" @click="page=Math.max(1,Math.ceil((matches.length)/(20)))">末页</ElButton></ElPagination>
+   <ElPagination v-else-if="resource==='logs'" v-model:current-page="page" :page-size="20" :total="logTotal" :disabled="busy" layout="total, prev, pager, next, jumper, slot" class="mt-4" @current-change="load" style="justify-content:center;flex-wrap:wrap;row-gap:8px"><ElButton size="small" :disabled="page<=1" @click="page=1;load()">首页</ElButton><ElButton size="small" :disabled="page>=Math.max(1,Math.ceil((logTotal)/(20)))" @click="page=Math.max(1,Math.ceil((logTotal)/(20)));load()">末页</ElButton></ElPagination>
   </ElCard>
   <PackageOrder :resource="resource==='membership-plans'?'membership-plans':'point-packages'" v-if="packageOrderOpen" v-model="packageOrderOpen" @saved="load"/>
   <PlanEntitlements v-if="entitlementOpen" v-model="entitlementOpen" :plan="entitlementPlan"/>
