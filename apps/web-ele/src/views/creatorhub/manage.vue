@@ -55,7 +55,7 @@ const secondsAllowed = computed(() => ['remove_subtitle','remove_watermark','ext
 const allowedUnits = computed(() => {
  const feature = String(keys.value.feature);
  if (feature === 'tts') return ['count', 'characters'];
- return secondsAllowed.value || ['video_notes_report', 'video_notes_subtitles'].includes(feature)
+ return secondsAllowed.value || ['extract_text_link', 'video_notes_report', 'video_notes_subtitles'].includes(feature)
   ? ['count', 'seconds'] : ['count'];
 });
 const tableSections = computed(() => {
