@@ -95,6 +95,18 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/creatorhub/client-logs',
+    name: 'CreatorHubClientLogs',
+    component: () => import('#/views/creatorhub/client-logs.vue'),
+    meta: {
+      title: '客户端日志',
+      resource: 'client-logs',
+      permission: 'client-logs:read',
+      icon: 'lucide:smartphone',
+      order: 0.6,
+    },
+  },
+  {
     path: '/creatorhub/image-diagnostics',
     name: 'CreatorHubImageDiagnostics',
     component: () => import('#/views/creatorhub/image-diagnostics.vue'),
