@@ -1162,6 +1162,24 @@ function search() {
   page.value = 1;
   void load();
 }
+function resetFilters() {
+  filters.value = {
+    openid: '',
+    nickname: '',
+    status: '',
+    platform: '',
+    output_mode: '',
+    run_id: '',
+    resource_key: '',
+    feature: '',
+    is_valid: '',
+    development: '',
+  };
+  dates.value = null;
+  userCreatedDates.value = null;
+  userLoginDates.value = null;
+  search();
+}
 type MediaDeleteFailure = {
   id: string;
   code: number;
@@ -1906,6 +1924,7 @@ watch(
         end-placeholder="结束时间"
       />
       <ElButton :loading="busy" type="primary" @click="search">查询</ElButton>
+      <ElButton :disabled="busy" @click="resetFilters">重置</ElButton>
 
       <ElButton
         v-if="canDeleteMedia"
