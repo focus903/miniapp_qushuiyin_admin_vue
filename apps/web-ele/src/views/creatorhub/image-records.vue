@@ -25,6 +25,7 @@ import {
 
 import { requestClient } from '#/api/request';
 import CopyValue from '#/components/copy-value.vue';
+import { ACCOUNT_TYPES } from '#/utils/account-type';
 import { useBusinessRecordDeletion } from '#/utils/business-record-deletion';
 interface ImageRecord {
   id: string;
@@ -87,6 +88,7 @@ const total = ref(0);
 const kind = ref(routeKind.value);
 const status = ref('');
 const openid = ref('');
+const development = ref('');
 const busy = ref(false);
 const error = ref('');
 const dialog = ref(false);
@@ -118,6 +120,7 @@ async function load() {
         kind: kind.value || undefined,
         status: status.value || undefined,
         openid: openid.value.trim() || undefined,
+        development: development.value || undefined,
       },
     });
     if (current === generation) {
@@ -266,6 +269,19 @@ onActivated(() => {
           :key="value"
           :label="label"
           :value="value"
+        />
+      </ElSelect>
+      <ElSelect
+        v-model="development"
+        placeholder="账号类型"
+        clearable
+        @change="search"
+      >
+        <ElOption
+          v-for="t in ACCOUNT_TYPES"
+          :key="t.value"
+          :label="t.label"
+          :value="t.value"
         />
       </ElSelect>
       <ElInput

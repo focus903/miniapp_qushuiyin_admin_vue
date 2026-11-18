@@ -35,6 +35,7 @@ import {
 
 import { requestClient } from '#/api/request';
 import AppConfigField from '#/components/app-config-field.vue';
+import DoubaoCookie from '#/components/doubao-cookie.vue';
 import DouyinCookie from '#/components/douyin-cookie.vue';
 import PermissionTree from '#/components/permission-tree.vue';
 import WechatCookie from '#/components/wechat-cookie.vue';
@@ -69,9 +70,9 @@ const roles = ref<Role[]>([]);
 const permissions = ref<{ code: string; name: string }[]>([]);
 const config = ref<Config>({});
 const videoNotesLearningKeys = new Set([
-  'showVideoNotesMindmap',
   'showVideoNotesKnowledgeGraph',
   'showVideoNotesLearningCard',
+  'showVideoNotesMindmap',
 ]);
 const videoNotesFieldOrder = new Map(
   [
@@ -86,7 +87,7 @@ const videoNotesFieldOrder = new Map(
 function videoNotesChildFields(fields: ConfigField[]) {
   return fields
     .filter((field) => field.key !== 'showVideoNotes')
-    .sort(
+    .toSorted(
       (a, b) =>
         (videoNotesFieldOrder.get(a.key) ?? videoNotesFieldOrder.size) -
         (videoNotesFieldOrder.get(b.key) ?? videoNotesFieldOrder.size),
@@ -135,9 +136,11 @@ const outputIcons: Record<string, { icon: string; color: string }> = {
   },
   pipixiaOutputMode: { icon: 'icon-park-outline:shrimp', color: '#ff7a45' },
   youtubeOutputMode: { icon: 'simple-icons:youtube', color: '#ff0000' },
+  doubaoOutputMode: { icon: 'lucide:sparkles', color: '#1664ff' },
 };
 const wechatCookieDialog = ref(false);
 const douyinCookieDialog = ref(false);
+const doubaoCookieDialog = ref(false);
 const configGeneration = ref(0);
 const configLayout = ref<ReturnType<typeof configTabs>>([]);
 const invalidFields = ref<Record<string, boolean>>({});
@@ -393,21 +396,19 @@ watch(
                   "
                 >
                   <template #label>
-                    <span class="inline-flex items-center gap-2"
-                      ><IconifyIcon
+                    <span class="inline-flex items-center gap-2"><IconifyIcon
                         v-if="outputIcons[field.key]"
                         :icon="outputIcons[field.key]!.icon"
                         :style="{ color: outputIcons[field.key]!.color }"
                         class="size-5 shrink-0"
                         aria-hidden="true"
-                      />{{ field.label }}<ElTag
+                      />{{ field.label
+                      }}<ElTag
                         v-if="field.key === 'wechatOutputMode'"
                         size="small"
                         type="success"
                         effect="plain"
-                        >公众号图文</ElTag
-                      ></span
-                    >
+                        >公众号图文</ElTag></span>
                     <span
                       v-if="field.key === 'wxTaskMessageState'"
                       class="ml-3 inline-flex items-center gap-2 text-sm"
@@ -417,8 +418,7 @@ watch(
                           (value) =>
                             (config.wxTaskMessageStateFixed = Boolean(value))
                         "
-                      />固定使用此版本</span
-                    >
+                      />固定使用此版本</span>
                     <ElButton
                       v-if="field.key === 'wechatOutputMode'"
                       class="ml-2"
@@ -440,6 +440,17 @@ watch(
                       @click="douyinCookieDialog = true"
                     >
                       登录态配置
+                    </ElButton>
+                    <ElButton
+                      v-if="field.key === 'doubaoOutputMode'"
+                      class="ml-2"
+                      size="small"
+                      type="primary"
+                      plain
+                      :disabled="false"
+                      @click="doubaoCookieDialog = true"
+                    >
+                      Cookie 配置
                     </ElButton>
                   </template>
                 </AppConfigField>
@@ -473,14 +484,21 @@ watch(
                     </RouterLink>
                     设置。
                   </p>
-                  <div v-if="child.code === 'video_notes'" class="notes-settings">
+                  <div
+                    v-if="child.code === 'video_notes'"
+                    class="notes-settings"
+                  >
                     <AppConfigField
-                      v-for="field in child.fields.filter((item) => item.key === 'showVideoNotes')"
+                      v-for="field in child.fields.filter(
+                        (item) => item.key === 'showVideoNotes',
+                      )"
                       :key="`${configGeneration}-${field.key}`"
                       class="notes-master-switch"
                       :field="field"
                       :model-value="config[field.key]"
-                      @update:model-value="(value) => (config[field.key] = value)"
+                      @update:model-value="
+                        (value) => (config[field.key] = value)
+                      "
                     >
                       <template #label>显示视频笔记（总开关）</template>
                     </AppConfigField>
@@ -493,11 +511,19 @@ watch(
                       <AppConfigField
                         v-for="field in videoNotesChildFields(child.fields)"
                         :key="`${configGeneration}-${field.key}`"
-                        :class="{ 'notes-learning-switch': videoNotesLearningKeys.has(field.key) }"
+                        :class="{
+                          'notes-learning-switch': videoNotesLearningKeys.has(
+                            field.key,
+                          ),
+                        }"
                         :field="field"
                         :model-value="config[field.key]"
-                        @update:model-value="(value) => (config[field.key] = value)"
-                        @validity-change="(valid) => (invalidFields[field.key] = !valid)"
+                        @update:model-value="
+                          (value) => (config[field.key] = value)
+                        "
+                        @validity-change="
+                          (valid) => (invalidFields[field.key] = !valid)
+                        "
                       />
                     </fieldset>
                   </div>
@@ -517,21 +543,19 @@ watch(
                       "
                     >
                       <template #label>
-                        <span class="inline-flex items-center gap-2"
-                          ><IconifyIcon
+                        <span class="inline-flex items-center gap-2"><IconifyIcon
                             v-if="outputIcons[field.key]"
                             :icon="outputIcons[field.key]!.icon"
                             :style="{ color: outputIcons[field.key]!.color }"
                             class="size-5 shrink-0"
                             aria-hidden="true"
-                          />{{ field.label }}<ElTag
+                          />{{ field.label
+                          }}<ElTag
                             v-if="field.key === 'wechatOutputMode'"
                             size="small"
                             type="success"
                             effect="plain"
-                            >公众号图文</ElTag
-                          ></span
-                        >
+                            >公众号图文</ElTag></span>
                         <span
                           v-if="field.key === 'wxTaskMessageState'"
                           class="ml-3 inline-flex items-center gap-2 text-sm"
@@ -544,8 +568,7 @@ watch(
                                 (config.wxTaskMessageStateFixed =
                                   Boolean(value))
                             "
-                          />固定使用此版本</span
-                        >
+                          />固定使用此版本</span>
                         <ElButton
                           v-if="field.key === 'wechatOutputMode'"
                           class="ml-2"
@@ -568,6 +591,17 @@ watch(
                         >
                           登录态配置
                         </ElButton>
+                        <ElButton
+                          v-if="field.key === 'doubaoOutputMode'"
+                          class="ml-2"
+                          size="small"
+                          type="primary"
+                          plain
+                          :disabled="false"
+                          @click="doubaoCookieDialog = true"
+                        >
+                          Cookie 配置
+                        </ElButton>
                       </template>
                     </AppConfigField>
                   </div>
@@ -583,8 +617,8 @@ watch(
               :disabled="busy || !!errorMessage || !configLayout.length"
               @click="saveConfig"
             >
-              保存配置 </ElButton
-            ><ElButton @click="load">重新加载</ElButton>
+              保存配置
+</ElButton><ElButton @click="load">重新加载</ElButton>
           </ElFormItem>
         </ElForm>
       </template>
@@ -613,15 +647,15 @@ watch(
               <ElOption label="启用" :value="1" /><ElOption
                 label="禁用"
                 :value="0"
-              /> </ElSelect
-            ><ElButton
+              />
+</ElSelect><ElButton
               @click="
                 page = 1;
                 load();
               "
             >
-              查询 </ElButton
-            ><ElButton
+              查询
+</ElButton><ElButton
               v-if="access.accessCodes.includes('admins:create')"
               type="primary"
               @click="editUser()"
@@ -646,8 +680,8 @@ watch(
                   :loading="saving"
                   :before-change="() => toggleAdmin(row as Admin)"
                 />
-              </template> </ElTableColumn
-            ><ElTableColumn label="角色">
+              </template>
+</ElTableColumn><ElTableColumn label="角色">
               <template #default="{ row }">
                 {{
                   row.roles
@@ -657,20 +691,20 @@ watch(
                     )
                     .join('、') || '无'
                 }}
-              </template> </ElTableColumn
-            ><ElTableColumn label="创建时间">
+              </template>
+</ElTableColumn><ElTableColumn label="创建时间">
               <template #default="{ row }">
                 {{ new Date(row.created * 1000).toLocaleString() }}
-              </template> </ElTableColumn
-            ><ElTableColumn
+              </template>
+</ElTableColumn><ElTableColumn
               v-if="canSave || access.accessCodes.includes('admins:revoke')"
               label="操作"
               width="240"
             >
               <template #default="{ row }">
                 <ElButton v-if="canSave" link @click="editUser(row as Admin)">
-                  编辑 / 重置密码 </ElButton
-                ><ElButton
+                  编辑 / 重置密码
+</ElButton><ElButton
                   v-if="access.accessCodes.includes('admins:revoke')"
                   link
                   :disabled="saving"
@@ -698,8 +732,8 @@ watch(
                 load();
               "
             >
-              首页 </ElButton
-            ><ElButton
+              首页
+</ElButton><ElButton
               size="small"
               :disabled="page >= Math.max(1, Math.ceil(total / 20))"
               @click="
@@ -722,16 +756,16 @@ watch(
             class="mb-4"
             @click="editRole()"
           >
-            新增角色 </ElButton
-          ><ElTable :data="roles" empty-text="暂无角色">
+            新增角色
+</ElButton><ElTable :data="roles" empty-text="暂无角色">
             <ElTableColumn prop="name" label="角色" /><ElTableColumn
               prop="code"
               label="代码"
             /><ElTableColumn label="权限数量">
               <template #default="{ row }">
                 {{ row.permissions.length }}
-              </template> </ElTableColumn
-            ><ElTableColumn label="操作">
+              </template>
+</ElTableColumn><ElTableColumn label="操作">
               <template #default="{ row }">
                 <ElButton
                   v-if="canSave"
@@ -768,6 +802,16 @@ watch(
       <DouyinCookie v-if="douyinCookieDialog" :can-save="canSave" />
     </ElDialog>
     <ElDialog
+      v-if="isConfig"
+      v-model="doubaoCookieDialog"
+      title="豆包登录态配置"
+      width="min(760px, 94vw)"
+      top="5vh"
+      destroy-on-close
+    >
+      <DoubaoCookie v-if="doubaoCookieDialog" :can-save="canSave" />
+    </ElDialog>
+    <ElDialog
       v-model="userDialog"
       :title="editingId ? '编辑管理员' : '新增管理员'"
       width="560px"
@@ -779,22 +823,22 @@ watch(
             v-model="userForm.username"
             maxlength="64"
             autocomplete="off"
-          /> </ElFormItem
-        ><ElFormItem :label="editingId ? '新密码' : '密码'">
+          />
+</ElFormItem><ElFormItem :label="editingId ? '新密码' : '密码'">
           <ElInput
             v-model="userForm.password"
             type="password"
             show-password
             autocomplete="new-password"
             :placeholder="editingId ? '留空不修改；至少6位' : '至少6位'"
-          /> </ElFormItem
-        ><ElFormItem label="启用">
+          />
+</ElFormItem><ElFormItem label="启用">
           <ElSwitch
             v-model="userForm.enabled"
             :active-value="1"
             :inactive-value="0"
-          /> </ElFormItem
-        ><ElFormItem label="角色">
+          />
+</ElFormItem><ElFormItem label="角色">
           <ElSelect v-model="userForm.roles" multiple style="width: 100%">
             <ElOption
               v-for="role in roles"
@@ -803,10 +847,9 @@ watch(
               :value="role.code"
             />
           </ElSelect>
-        </ElFormItem> </ElForm
-      ><template #footer>
-        <ElButton @click="userDialog = false">取消</ElButton
-        ><ElButton type="primary" :loading="saving" @click="saveUser">
+        </ElFormItem>
+</ElForm><template #footer>
+        <ElButton @click="userDialog = false">取消</ElButton><ElButton type="primary" :loading="saving" @click="saveUser">
           保存
         </ElButton>
       </template>
@@ -818,19 +861,18 @@ watch(
             v-model="roleForm.code"
             :disabled="editingRole"
             placeholder="3至64位小写英文、数字、下划线"
-          /> </ElFormItem
-        ><ElFormItem label="中文名称">
-          <ElInput v-model="roleForm.name" maxlength="100" /> </ElFormItem
-        ><ElFormItem label="权限">
+          />
+</ElFormItem><ElFormItem label="中文名称">
+          <ElInput v-model="roleForm.name" maxlength="100" />
+</ElFormItem><ElFormItem label="权限">
           <PermissionTree
             v-if="roleDialog"
             v-model="roleForm.permissions"
             :permissions="permissions"
           />
-        </ElFormItem> </ElForm
-      ><template #footer>
-        <ElButton @click="roleDialog = false">取消</ElButton
-        ><ElButton type="primary" :loading="saving" @click="saveRole">
+        </ElFormItem>
+</ElForm><template #footer>
+        <ElButton @click="roleDialog = false">取消</ElButton><ElButton type="primary" :loading="saving" @click="saveRole">
           保存
         </ElButton>
       </template>
@@ -938,39 +980,45 @@ watch(
 
 <style scoped>
 .notes-settings {
+  overflow: hidden;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
-  overflow: hidden;
 }
+
 .notes-settings > :deep(.notes-master-switch) {
   margin: 0;
   border: 0;
   border-bottom: 1px solid var(--el-border-color-lighter);
   border-radius: 0;
 }
+
 .notes-config-grid {
   display: grid;
-  min-width: 0;
-  margin: 0;
-  padding: 12px;
-  border: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  margin: 0;
+  border: 0;
 }
+
 .notes-config-grid:disabled {
-  opacity: 0.55;
   background: var(--el-fill-color-light);
+  opacity: 0.55;
 }
+
 .notes-config-grid > :deep(.el-form-item) {
   grid-column: 1 / -1;
   min-width: 0;
   margin-bottom: 0;
 }
+
 .notes-config-grid > :deep(.notes-learning-switch) {
   grid-column: auto;
-  padding: 10px;
   gap: 6px;
+  padding: 10px;
 }
+
 .notes-config-grid > :deep(.notes-learning-switch .el-form-item__label) {
   font-size: 13px;
 }

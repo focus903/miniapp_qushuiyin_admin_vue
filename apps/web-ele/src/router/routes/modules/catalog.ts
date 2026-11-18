@@ -30,29 +30,33 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/creatorhub/video-notes-records.vue'),
         meta: { title: '视频笔记记录', permission: 'video-notes-records:read' },
       },
+      {
+        name: 'TtsRecords',
+        path: '/tts/records',
+        component: () => import('#/views/creatorhub/tts-records.vue'),
+        meta: { title: '配音记录', permission: 'tts-records:read' },
+      },
     ],
   },
   {
     name: 'StorageCatalog',
     path: '/storage',
     meta: { title: '存储管理', icon: 'lucide:database', order: 7 },
-    children: [
-      ...(
-        [
-          ['buckets', '存储桶配置'],
-          ['uploads', '上传记录'],
-        ] as const
-      ).map(([resource, title]) => ({
-        name: `Storage${resource}`,
-        path: `/storage/${resource}`,
-        component: page,
-        meta: {
-          title,
-          resource,
-          permission: `storage-${resource}:read`,
-        },
-      })),
-    ],
+    children: (
+      [
+        ['buckets', '存储桶配置'],
+        ['uploads', '上传记录'],
+      ] as const
+    ).map(([resource, title]) => ({
+      name: `Storage${resource}`,
+      path: `/storage/${resource}`,
+      component: page,
+      meta: {
+        title,
+        resource,
+        permission: `storage-${resource}:read`,
+      },
+    })),
   },
 ];
 export default routes;

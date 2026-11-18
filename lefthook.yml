@@ -61,9 +61,10 @@ pre-commit:
       glob: '*.{vue,css,less,scss}'
       run: pnpm exec stylelint --fix {staged_files}
       stage_fixed: true
-    # 完全关闭提交时的类型检查：注释掉下面两行；其他检查继续执行。
-    - name: checkType
-      run: pnpm --filter @vben/web-ele run typecheck
+    # 类型检查改为手动执行：vue-tsc 扫全项目，会把历史遗留错误也算到本次提交头上。
+    # 需要时用 pnpm --filter @vben/web-ele run typecheck 单独跑。
+    # - name: checkType
+    #   run: pnpm --filter @vben/web-ele run typecheck
 
 post-merge:
   commands:

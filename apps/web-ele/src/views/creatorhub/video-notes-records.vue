@@ -20,6 +20,7 @@ import {
 
 import { requestClient } from '#/api/request';
 import CopyValue from '#/components/copy-value.vue';
+import { ACCOUNT_TYPES } from '#/utils/account-type';
 
 interface NoteRecord {
   id: string;
@@ -46,6 +47,7 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = ref(20);
 const owner = ref('');
+const development = ref('');
 const kind = ref('');
 const status = ref('');
 const keyword = ref('');
@@ -79,6 +81,7 @@ function queryParams(): Record<string, number | string | undefined> {
     page: page.value,
     page_size: pageSize.value,
     owner: owner.value.trim() || undefined,
+    development: development.value || undefined,
     kind: kind.value || undefined,
     status: status.value.trim() || undefined,
     keyword: keyword.value.trim() || undefined,
@@ -127,6 +130,7 @@ async function search() {
 
 function reset() {
   owner.value = '';
+  development.value = '';
   kind.value = '';
   status.value = '';
   keyword.value = '';
@@ -174,6 +178,20 @@ onMounted(() => {
           aria-label="用户标识"
           @keyup.enter="search"
         />
+        <ElSelect
+          v-model="development"
+          placeholder="账号类型"
+          clearable
+          aria-label="账号类型"
+          @change="search"
+        >
+          <ElOption
+            v-for="t in ACCOUNT_TYPES"
+            :key="t.value"
+            :label="t.label"
+            :value="t.value"
+          />
+        </ElSelect>
         <ElSelect
           v-model="kind"
           placeholder="全部类型"
