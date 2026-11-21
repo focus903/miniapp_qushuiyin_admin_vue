@@ -752,6 +752,7 @@ const parseDeleteItems = ref<Row[]>([]);
 const platformOptions = [
   { value: 'wechat', label: '微信视频号 (wechat)' },
   { value: 'doubao', label: '豆包 (doubao)' },
+  { value: 'jimeng', label: '即梦 (jimeng)' },
   { value: 'douyin', label: '抖音 (douyin)' },
   { value: 'xiaohongshu', label: '小红书 (xiaohongshu)' },
   { value: 'bilibili', label: 'B站 (bilibili)' },

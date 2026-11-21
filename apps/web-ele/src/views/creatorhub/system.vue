@@ -137,6 +137,7 @@ const outputIcons: Record<string, { icon: string; color: string }> = {
   pipixiaOutputMode: { icon: 'icon-park-outline:shrimp', color: '#ff7a45' },
   youtubeOutputMode: { icon: 'simple-icons:youtube', color: '#ff0000' },
   doubaoOutputMode: { icon: 'lucide:sparkles', color: '#1664ff' },
+  jimengOutputMode: { icon: 'lucide:clapperboard', color: '#7c3aed' },
 };
 const wechatCookieDialog = ref(false);
 const douyinCookieDialog = ref(false);
@@ -385,6 +386,8 @@ watch(
                   v-for="field in group.fields.filter(
                     (item) =>
                       item.key !== 'wxTaskMessageStateFixed' &&
+                      item.key !== 'maintenanceNotice' &&
+                      item.key !== 'homeNotice' &&
                       visibleBusinessField(item.key),
                   )"
                   :key="`${configGeneration}-${field.key}`"
@@ -452,6 +455,45 @@ watch(
                     >
                       Cookie 配置
                     </ElButton>
+                  </template>
+                  <template
+                    v-if="
+                      field.key === 'maintenanceMode' ||
+                      field.key === 'showHomeNotice'
+                    "
+                    #extra
+                  >
+                    <div class="config-inline-notice">
+                      <ElInput
+                        :model-value="
+                          String(
+                            config[
+                              field.key === 'maintenanceMode'
+                                ? 'maintenanceNotice'
+                                : 'homeNotice'
+                            ] ?? '',
+                          )
+                        "
+                        type="textarea"
+                        :rows="2"
+                        :maxlength="
+                          field.key === 'maintenanceMode' ? 200 : 2000
+                        "
+                        :placeholder="
+                          field.key === 'maintenanceMode'
+                            ? '维护模式开启时展示给用户的公告，例如“系统升级中，预计 30 分钟后恢复”'
+                            : '显示在小程序首页的公告文字，留空则不显示'
+                        "
+                        @update:model-value="
+                          (value) =>
+                            (config[
+                              field.key === 'maintenanceMode'
+                                ? 'maintenanceNotice'
+                                : 'homeNotice'
+                            ] = value)
+                        "
+                      />
+                    </div>
                   </template>
                 </AppConfigField>
               </div>

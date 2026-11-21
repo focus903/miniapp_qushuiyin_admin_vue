@@ -282,6 +282,7 @@ function changeCalendar(value: null | string) {
       >
         {{ field.description }}
       </div>
+      <slot name="extra"></slot>
     </div>
   </ElFormItem>
 </template>
@@ -386,6 +387,11 @@ function changeCalendar(value: null | string) {
   grid-column: 1 / -1;
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.config-switch :deep(.config-inline-notice) {
+  grid-column: 1 / -1;
+  margin-top: 2px;
 }
 
 .config-default-output {

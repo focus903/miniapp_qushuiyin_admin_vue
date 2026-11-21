@@ -12,6 +12,7 @@ import {
 import {
   ElAlert,
   ElButton,
+  ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
@@ -25,6 +26,7 @@ import {
 
 import { requestClient } from '#/api/request';
 import CopyValue from '#/components/copy-value.vue';
+import WorkerNodeGuide from '#/components/worker-node-guide.vue';
 
 type Provider = 'aliyun_ims' | 'tencent_mps' | 'volc_mediakit';
 type Form = {
@@ -128,6 +130,7 @@ const checking = ref(false);
 const errorMessage = ref('');
 const result = ref<CheckResult | null>(null);
 const pageActive = ref(true);
+const guideOpen = ref(false);
 const environment = ref<EnvironmentChecks>();
 const environmentChecking = ref(false);
 const environmentError = ref('');
@@ -135,6 +138,28 @@ const busy = computed(
   () => props.disabled || loading.value || saving.value || checking.value,
 );
 const isTencent = computed(() => form.provider === 'tencent_mps');
+// UI 上「处理方式」是三选一；worker 落到后端仍是 mode=local + execution=worker。
+type DisplayMode = 'cloud' | 'local' | 'worker';
+const displayMode = computed<DisplayMode>({
+  get: () => {
+    if (form.mode === 'cloud') return 'cloud';
+    if (
+      form.subtitle_execution === 'worker' ||
+      form.watermark_execution === 'worker'
+    )
+      return 'worker';
+    return 'local';
+  },
+  set: (value) => {
+    if (value === 'cloud') {
+      form.mode = 'cloud';
+      return;
+    }
+    form.mode = 'local';
+    form.subtitle_execution = value === 'worker' ? 'worker' : 'local';
+    form.watermark_execution = value === 'worker' ? 'worker' : 'local';
+  },
+});
 const endpoint = computed(() => {
   if (isTencent.value) return 'https://mps.tencentcloudapi.com';
   if (form.provider === 'aliyun_ims')
@@ -336,12 +361,24 @@ onDeactivated(() => {
       class="mb-4"
     />
     <ElFormItem label="处理方式">
-      <ElRadioGroup v-model="form.mode">
-        <ElRadio value="local">本地处理</ElRadio><ElRadio value="cloud">云端 API</ElRadio>
+      <ElRadioGroup v-model="displayMode">
+        <ElRadio value="local">本地处理</ElRadio>
+        <ElRadio value="worker">远程工作节点</ElRadio>
+        <ElRadio value="cloud">云端 API</ElRadio>
       </ElRadioGroup>
       <p class="help">
-        适用于视频去字幕、视频区域去水印。本地模型可分别选择本机或远程工作节点执行。
+        适用于视频去字幕、视频区域去水印。本地处理在本机跑模型占用服务器
+        CPU；远程工作节点把任务派给独立节点、本机只做调度，两者都用本地模型。云端
+        API 调用第三方付费服务。
       </p>
+      <ElButton
+        v-if="displayMode === 'worker'"
+        text
+        type="primary"
+        @click="guideOpen = true"
+      >
+        查看工作节点部署说明
+      </ElButton>
     </ElFormItem>
     <ElAlert
       v-if="form.mode === 'cloud'"
@@ -354,6 +391,18 @@ onDeactivated(() => {
       :closable="false"
       class="mb-4"
     />
+    <ElDialog
+      v-model="guideOpen"
+      title="工作节点部署说明"
+      width="720px"
+      top="6vh"
+      destroy-on-close
+    >
+      <WorkerNodeGuide />
+      <template #footer>
+        <ElButton type="primary" @click="guideOpen = false">知道了</ElButton>
+      </template>
+    </ElDialog>
     <template v-if="form.mode === 'local'">
       <p class="help" aria-live="polite">
         {{
@@ -380,12 +429,6 @@ onDeactivated(() => {
             <ElRadioGroup v-model="localValues[task.engine]">
               <ElRadio value="lama">LaMa（效果优先）</ElRadio>
               <ElRadio value="opencv">OpenCV（CPU，速度优先）</ElRadio>
-            </ElRadioGroup>
-          </ElFormItem>
-          <ElFormItem label="执行位置">
-            <ElRadioGroup v-model="form[task.execution]">
-              <ElRadio value="local">local · 本机处理</ElRadio>
-              <ElRadio value="worker">worker · 远程工作节点</ElRadio>
             </ElRadioGroup>
           </ElFormItem>
           <template v-if="environment">
@@ -415,9 +458,8 @@ onDeactivated(() => {
         </section>
       </div>
       <p class="help">
-        LaMa 使用 AI 修复模型；OpenCV
-        使用传统修复算法，两者统一归为本地处理。选择 worker
-        时，需要在线且支持对应视频任务的工作节点，模型和依赖安装在实际执行的机器上。保存后新任务生效，已提交任务保留提交时的引擎和执行位置。上传大小限制仍在「小程序配置
+        LaMa 使用 AI 修复模型，OpenCV 使用传统修复算法。选择 worker
+        时，需先按部署说明配置在线工作节点，模型和依赖安装在实际执行的机器上；本机环境检查此时显示「未验证远程环境」属正常。保存后新任务生效，已提交任务保留提交时的引擎与执行位置。上传大小限制仍在「小程序配置
         → 视频处理」中设置。
       </p>
     </template>
@@ -515,7 +557,9 @@ onDeactivated(() => {
               placeholder="例如 ap-guangzhou"
               maxlength="32"
             />
-            <p class="help">填写桶所在地域的代码，可在 COS 存储桶列表中查看。</p>
+            <p class="help">
+              填写桶所在地域的代码，可在 COS 存储桶列表中查看。
+            </p>
           </ElFormItem>
         </div>
         <p class="help">
