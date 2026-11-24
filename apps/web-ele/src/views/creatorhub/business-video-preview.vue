@@ -14,6 +14,9 @@ type Preview = {
   input_reason: string;
   result_reason: string;
   media_expires: number;
+  cloud?: boolean;
+  input_cloud_url?: string;
+  result_cloud_url?: string;
 };
 const busy = ref(false);
 const loadError = ref('');
@@ -34,6 +37,14 @@ function mediaUrl(url: string) {
     return parsed.pathname + parsed.search;
   } catch {
     return '';
+  }
+}
+function fullUrl(url: string) {
+  if (!url) return '';
+  try {
+    return new URL(url, window.location.origin).toString();
+  } catch {
+    return url;
   }
 }
 async function load() {
@@ -88,6 +99,20 @@ onBeforeUnmount(() => {
       type="error"
       :closable="false"
     />
+    <ElAlert
+      v-if="value?.cloud"
+      title="本记录为云端直传：上方「链接地址」是后台代理入口，需管理员登录、稳定不过期；下方「云存储直链」是对象存储的原始地址，可直接打开或复制，公开桶谁拿到都能访问，请勿随意外发。「存储位置」是桶内对象 key。"
+      type="info"
+      :closable="false"
+      class="mb-3"
+    />
+    <ElAlert
+      v-else-if="value"
+      title="本记录为上传到服务器：视频文件保存在服务器本地，「链接地址」是后台代理入口，需管理员登录；无云存储直链。「存储位置」是服务器上的相对路径。"
+      type="info"
+      :closable="false"
+      class="mb-3"
+    />
     <div
       v-if="value"
       class="video-grid"
@@ -110,10 +135,24 @@ onBeforeUnmount(() => {
               : value.input_reason
           }}
         </p>
+        <div v-if="value.input_url" class="path-line">
+          <span class="path-label">链接地址</span><CopyValue :value="fullUrl(value.input_url)" label="复制原视频链接">
+            <span class="path-text" :title="fullUrl(value.input_url)">{{
+              fullUrl(value.input_url)
+            }}</span>
+          </CopyValue>
+        </div>
         <div v-if="value.input_path" class="path-line">
-          <span class="path-label">本地路径</span><CopyValue :value="value.input_path" label="复制原视频本地路径">
+          <span class="path-label">存储位置</span><CopyValue :value="value.input_path" label="复制原视频路径或对象 key">
             <span class="path-text" :title="value.input_path">{{
               value.input_path
+            }}</span>
+          </CopyValue>
+        </div>
+        <div v-if="value.input_cloud_url" class="path-line">
+          <span class="path-label">云存储直链</span><CopyValue :value="value.input_cloud_url" label="复制原视频云存储直链">
+            <span class="path-text" :title="value.input_cloud_url">{{
+              value.input_cloud_url
             }}</span>
           </CopyValue>
         </div>
@@ -131,10 +170,27 @@ onBeforeUnmount(() => {
         <p v-else>
           {{ resultFailed ? '播放失败，请重新加载预览' : value.result_reason }}
         </p>
+        <div v-if="value.result_url" class="path-line">
+          <span class="path-label">链接地址</span><CopyValue
+            :value="fullUrl(value.result_url)"
+            label="复制处理结果链接"
+          >
+            <span class="path-text" :title="fullUrl(value.result_url)">{{
+              fullUrl(value.result_url)
+            }}</span>
+          </CopyValue>
+        </div>
         <div v-if="value.result_path" class="path-line">
-          <span class="path-label">本地路径</span><CopyValue :value="value.result_path" label="复制处理结果本地路径">
+          <span class="path-label">存储位置</span><CopyValue :value="value.result_path" label="复制处理结果路径或对象 key">
             <span class="path-text" :title="value.result_path">{{
               value.result_path
+            }}</span>
+          </CopyValue>
+        </div>
+        <div v-if="value.result_cloud_url" class="path-line">
+          <span class="path-label">云存储直链</span><CopyValue :value="value.result_cloud_url" label="复制处理结果云存储直链">
+            <span class="path-text" :title="value.result_cloud_url">{{
+              value.result_cloud_url
             }}</span>
           </CopyValue>
         </div>

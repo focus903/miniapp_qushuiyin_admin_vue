@@ -50,6 +50,7 @@ import BusinessVideoPreview from './business-video-preview.vue';
 import LoginHistoryDialog from './login-history-dialog.vue';
 import MediaFilePreview from './media-file-preview.vue';
 import ParseDetail from './parse-detail.vue';
+import ParseTestPreview from './parse-test-preview.vue';
 type Row = Record<string, unknown>;
 type Result = { items: Row[]; total: number };
 const route = useRoute();
@@ -275,6 +276,14 @@ const parseResourcesBusy = ref(false);
 const parseResourcesError = ref('');
 const parseResourcesOpen = ref(false);
 const parseResources = ref<Row[]>([]);
+// —— 测试解析：用原始分享内容调用手机端解析逻辑，仅预览不落盘 ——
+const parseTestOpen = ref(false);
+const parseTestShare = ref('');
+function openParseTest(row: Row) {
+  if (!canRead('parses') || !row.share_text) return;
+  parseTestShare.value = String(row.share_text);
+  parseTestOpen.value = true;
+}
 const parseResourcesShare = ref('');
 const parseResourcesNote = ref('');
 let parseResourcesVersion = 0;
@@ -781,11 +790,7 @@ const parseColumnWidths: Record<string, number> = {
 };
 const columns = computed(() => {
   if (kind.value === 'users') {
-    return (columnMap.users || []).filter(
-      (key) =>
-        key !== 'reserved' ||
-        rows.value.some((row) => Number(row.reserved) > 0),
-    );
+    return columnMap.users || [];
   }
   if (kind.value === 'parses' && trashed.value) {
     return [...(columnMap.parses || []), 'deleted_at', 'deleted_by'];
@@ -1163,6 +1168,126 @@ function search() {
   page.value = 1;
   void load();
 }
+
+// —— 充值订单：物理删除（仅待支付/已关闭）——
+const orderDeleteBusy = ref(false);
+const canDeleteOrder = computed(
+  () => kind.value === 'orders' && access.accessCodes.includes('orders:read'),
+);
+/** 只有待支付、已关闭的订单可以删除。 */
+function orderDeletable(row: Row): boolean {
+  return ['pending', 'closed'].includes(String(row.status || ''));
+}
+async function removeOrders(ids: string[]) {
+  if (!canDeleteOrder.value || orderDeleteBusy.value) return;
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (!unique.length) return;
+  try {
+    await ElMessageBox.confirm(
+      `永久删除这 ${unique.length} 笔订单？仅待支付、已关闭订单会被删除，已付款订单将保留。此操作不可恢复。`,
+      '确认删除订单',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    );
+  } catch {
+    return;
+  }
+  orderDeleteBusy.value = true;
+  try {
+    const result = await requestClient.post<{
+      deleted: number;
+      deleted_ids: string[];
+      failed: { id: string; message: string }[];
+    }>('/operations/orders/delete', { ids: unique, confirm: true });
+    selected.value = selected.value.filter(
+      (row) => !result.deleted_ids.includes(String(row.id)),
+    );
+    if (result.failed.length) {
+      ElMessage.warning(
+        `跳过 ${result.failed.length} 笔：${result.failed.map((item) => `${item.id}（${item.message}）`).join('、')}`,
+      );
+    }
+    if (result.deleted) ElMessage.success(`已删除 ${result.deleted} 笔订单`);
+    await load();
+  } finally {
+    orderDeleteBusy.value = false;
+  }
+}
+
+// —— 充值订单：一键清除失效订单（已关闭 / 待支付超过24小时）——
+const orderCleanupBusy = ref(false);
+async function cleanupInvalidOrders() {
+  if (!canDeleteOrder.value || orderCleanupBusy.value) return;
+  orderCleanupBusy.value = true;
+  try {
+    const preview = await requestClient.get<{ count: number }>(
+      '/operations/orders/invalid-count',
+    );
+    if (!preview.count) {
+      ElMessage.info('没有需要清除的失效订单');
+      return;
+    }
+    try {
+      await ElMessageBox.confirm(
+        `共发现 ${preview.count} 笔失效订单（已关闭，或待支付超过 24 小时）。将永久删除，已付款订单保留。此操作不可恢复。`,
+        '一键清除失效订单',
+        { type: 'warning', confirmButtonText: '清除', cancelButtonText: '取消' },
+      );
+    } catch {
+      return;
+    }
+    const result = await requestClient.post<{
+      deleted: number;
+      deleted_ids: string[];
+    }>('/operations/orders/cleanup', { confirm: true });
+    selected.value = selected.value.filter(
+      (row) => !result.deleted_ids.includes(String(row.id)),
+    );
+    ElMessage.success(`已清除 ${result.deleted} 笔失效订单`);
+    await load();
+  } finally {
+    orderCleanupBusy.value = false;
+  }
+}
+
+// —— 充值订单：60 秒下单上限配置 ——
+const rateLimitSaving = ref(false);
+const rateLimitValue = ref<number>(10);
+const canEditRateLimit = computed(
+  () => kind.value === 'orders' && access.accessCodes.includes('app-config:update'),
+);
+async function loadRateLimit() {
+  if (!canEditRateLimit.value) return;
+  try {
+    const config = await requestClient.get<Record<string, unknown>>(
+      '/system/app-config',
+    );
+    const value = Number(config.virtualOrderRateLimit);
+    rateLimitValue.value = Number.isFinite(value) && value >= 1 ? value : 10;
+  } catch {
+    // 无权限或读取失败时保留默认值，不阻断订单列表。
+  }
+}
+async function saveRateLimit() {
+  if (!canEditRateLimit.value || rateLimitSaving.value) return;
+  const value = Number(rateLimitValue.value);
+  if (!Number.isInteger(value) || value < 1 || value > 100) {
+    ElMessage.warning('下单上限须为 1 到 100 之间的整数');
+    return;
+  }
+  rateLimitSaving.value = true;
+  try {
+    await requestClient.put('/system/app-config', {
+      values: { virtualOrderRateLimit: value },
+    });
+    ElMessage.success('已保存下单上限');
+  } finally {
+    rateLimitSaving.value = false;
+  }
+}
+watch(kind, (value) => {
+  if (value === 'orders') void loadRateLimit();
+});
+
 function resetFilters() {
   filters.value = {
     openid: '',
@@ -2090,7 +2215,58 @@ watch(
         type="warning"
         :closable="false"
         class="mb-3 whitespace-pre-wrap"
-      /><ElButton
+      /><ElAlert
+        v-if="kind === 'orders'"
+        title="仅可删除待支付、已关闭的订单（物理删除，不可恢复）；已付款订单会保留。订单删除后对应待支付名额同步释放。「一键清除失效订单」会删除所有已关闭订单，以及待支付超过 24 小时的订单。"
+        type="info"
+        :closable="false"
+        class="mb-3"
+      />
+      <div
+        v-if="kind === 'orders'"
+        class="order-tools mb-3"
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px"
+      >
+        <ElButton
+          v-if="canDeleteOrder"
+          type="danger"
+          plain
+          :disabled="!selected.length || busy || orderDeleteBusy"
+          @click="removeOrders(selected.map((row) => String(row.id)))"
+        >
+          删除所选（{{ selected.length }}）
+        </ElButton>
+        <ElButton
+          v-if="canDeleteOrder"
+          type="danger"
+          plain
+          :loading="orderCleanupBusy"
+          :disabled="busy || orderDeleteBusy"
+          @click="cleanupInvalidOrders"
+        >
+          一键清除失效订单
+        </ElButton>
+        <span v-if="canEditRateLimit" class="order-rate-limit">
+          60 秒内下单上限：
+          <ElInputNumber
+            v-model="rateLimitValue"
+            :min="1"
+            :max="100"
+            :step="1"
+            style="width: 110px"
+          />
+          笔
+          <ElButton
+            size="small"
+            type="primary"
+            :loading="rateLimitSaving"
+            @click="saveRateLimit"
+          >
+            保存
+          </ElButton>
+        </span>
+      </div>
+      <ElButton
         v-if="canDeleteBusiness"
         type="danger"
         plain
@@ -2114,11 +2290,13 @@ watch(
           v-if="
             (kind === 'parses' && (canRecycle || canPurge)) ||
             canDeleteMedia ||
-            canDeleteBusiness
+            canDeleteBusiness ||
+            canDeleteOrder
           "
           type="selection"
           width="48"
           fixed="left"
+          :selectable="kind === 'orders' ? orderDeletable : undefined"
         /><ElTableColumn
           v-if="
             [
@@ -2168,10 +2346,10 @@ watch(
                       : key === 'member_info' || key === 'time_info'
                         ? 210
                         : key === 'share_parse_count'
-                          ? 210
-                          : key === 'openid' || key === 'error'
-                            ? 220
-                            : 150
+                            ? 210
+                            : key === 'openid' || key === 'error'
+                              ? 220
+                              : 150
           "
           :show-overflow-tooltip="
             ![
@@ -2185,7 +2363,13 @@ watch(
         >
           <template #header>
             <ElTooltip
-              v-if="key === 'share_parse_count'"
+              v-if="key === 'reserved'"
+              content="处理中任务预占的积分：完成任务后扣除，失败或取消后释放。冻结部分不计入可用积分，超过阈值仍未结算的残留由定时任务自动释放。"
+              placement="top"
+            >
+              <span class="cursor-help">{{ labels[key] }} ⓘ</span>
+</ElTooltip><ElTooltip
+              v-else-if="key === 'share_parse_count'"
               content="分别统计分享链接解析成功与失败次数，含回收站记录，不含处理中和文案提取"
               placement="top"
             >
@@ -2340,7 +2524,28 @@ watch(
                   :to="parseRecordsLocation(s.row, 'failed')"
                   class="user-parse-link user-parse-failed"
                   @click.stop
-                  >失败:{{ s.row.share_parse_failed_count ?? 0 }}</RouterLink></template><span v-else>{{ show(key, s.row[key], s.row) }}</span></span><span
+                  >失败:{{ s.row.share_parse_failed_count ?? 0 }}</RouterLink></template><span v-else>{{ show(key, s.row[key], s.row) }}</span></span><ElTooltip
+              v-else-if="kind === 'users' && key === 'reserved'"
+              placement="top"
+              :disabled="!(Number(s.row.reserved) > 0)"
+            >
+              <template #content>
+                <div
+                  v-for="item in s.row.reserved_items || []"
+                  :key="item.business_id || item.feature"
+                >
+                  {{ item.label }} {{ item.points }} 分 · {{ item.frozen_for }}
+                </div>
+                <div v-if="!(s.row.reserved_items || []).length">
+                  处理中任务预占 {{ s.row.reserved }} 分
+                </div>
+              </template>
+              <span
+                class="user-stat user-stat-balance"
+                :class="{ 'cursor-help': Number(s.row.reserved) > 0 }"
+                >{{ Number(s.row.reserved || 0) }}</span
+              >
+            </ElTooltip><span
               v-else-if="kind === 'users' && key === 'balance'"
               class="user-stat user-stat-balance"
               >{{ show(key, s.row[key], s.row) }}</span><CopyValue
@@ -2369,15 +2574,27 @@ watch(
               <CopyValue
                 :value="s.row.share_text"
                 label="复制原始分享内容"
-              /><ElButton
-                v-if="canRead('resources')"
-                link
-                type="primary"
-                :disabled="!s.row.share_text"
-                @click.stop="openParseResources(s.row)"
-              >
-                查看共享资源
-              </ElButton>
+              />
+              <div class="flex w-full items-center justify-end gap-3">
+                <ElButton
+                  v-if="canRead('resources')"
+                  link
+                  type="primary"
+                  :disabled="!s.row.share_text"
+                  @click.stop="openParseResources(s.row)"
+                >
+                  查看共享资源
+                </ElButton>
+                <ElButton
+                  v-if="canRead('parses')"
+                  link
+                  type="warning"
+                  :disabled="!s.row.share_text"
+                  @click.stop="openParseTest(s.row)"
+                >
+                  测试解析
+                </ElButton>
+              </div>
             </div>
             <CopyValue
               v-else-if="
@@ -2453,6 +2670,14 @@ watch(
           <template #default="s">
             <ElButton link type="primary" @click="open(s.row)">
               {{ task ? '详情 / 视频' : '详情' }}
+</ElButton><ElButton
+              v-if="canDeleteOrder && orderDeletable(s.row)"
+              link
+              type="danger"
+              :disabled="busy || orderDeleteBusy"
+              @click="removeOrders([String(s.row.id)])"
+            >
+              删除
 </ElButton><ElButton
               v-if="canDeleteBusiness"
               link
@@ -3131,7 +3356,9 @@ watch(
                       show(key, s.row[key], s.row)
                     }}</span>
                   </ElTooltip>
-</CopyValue><ElButton
+</CopyValue>
+              <div class="flex w-full items-center justify-end gap-3">
+                <ElButton
                   v-if="canRead('resources')"
                   link
                   type="primary"
@@ -3140,6 +3367,16 @@ watch(
                 >
                   查看共享资源
                 </ElButton>
+                <ElButton
+                  v-if="canRead('parses')"
+                  link
+                  type="warning"
+                  :disabled="!s.row.share_text"
+                  @click.stop="openParseTest(s.row)"
+                >
+                  测试解析
+                </ElButton>
+              </div>
               </div>
               <div
                 v-else-if="key === 'points' && s.row.order_type"
@@ -3439,6 +3676,7 @@ watch(
       :openid="loginHistoryOwner"
       @updated="load"
     />
+    <ParseTestPreview v-model="parseTestOpen" :share-text="parseTestShare" />
   </Page>
 </template>
 

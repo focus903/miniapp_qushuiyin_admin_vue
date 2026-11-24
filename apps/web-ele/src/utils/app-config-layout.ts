@@ -37,9 +37,12 @@ export type ConfigField = {
     | 'radio'
     | 'select'
     | 'switch'
+    | 'tags'
     | 'textarea'
     | 'time';
   format: string;
+  /** 视频处理分组内的分栏标识：subtitle 去字幕、watermark 去水印。 */
+  section?: '' | 'subtitle' | 'watermark';
   options?: { label: string; value: boolean | number | string }[];
   scenes?: AdFreeScene[];
 };

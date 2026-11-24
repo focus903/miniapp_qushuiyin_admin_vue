@@ -205,16 +205,16 @@ onDeactivated(() => {
       <div class="cards">
         <section>
           <h3>图片去水印</h3>
-          <ElFormItem label="修复引擎">
-            <ElRadioGroup v-model="form.watermark_engine">
-              <ElRadio value="lama">LaMa · 模型修复</ElRadio>
-              <ElRadio value="opencv">OpenCV · CPU 修复</ElRadio>
-            </ElRadioGroup>
-          </ElFormItem>
           <ElFormItem label="执行位置">
             <ElRadioGroup v-model="form.watermark_execution">
               <ElRadio value="local">local · 本机处理</ElRadio>
               <ElRadio value="worker">worker · 远程工作节点</ElRadio>
+            </ElRadioGroup>
+          </ElFormItem>
+          <ElFormItem label="修复引擎">
+            <ElRadioGroup v-model="form.watermark_engine">
+              <ElRadio value="lama">LaMa · 模型修复</ElRadio>
+              <ElRadio value="opencv">OpenCV · CPU 修复</ElRadio>
             </ElRadioGroup>
           </ElFormItem>
           <template v-if="form.watermark_engine === 'lama'">

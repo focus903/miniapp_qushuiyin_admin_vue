@@ -2,6 +2,7 @@
 import type {
   ConfigField,
   ConfigSchema,
+  ConfigSection,
   ConfigValues,
 } from '#/utils/app-config-layout';
 
@@ -143,6 +144,20 @@ const wechatCookieDialog = ref(false);
 const douyinCookieDialog = ref(false);
 const doubaoCookieDialog = ref(false);
 const configGeneration = ref(0);
+/** 视频处理分组左右分栏：左去字幕、右去水印，字段由服务端 section 元数据决定。 */
+function videoProcessingSections(group: ConfigSection) {
+  const sections = [
+    { code: 'subtitle', label: '视频去字幕', fields: [] as ConfigField[] },
+    { code: 'watermark', label: '视频去水印', fields: [] as ConfigField[] },
+  ];
+  for (const field of group.fields) {
+    // 修复引擎等字段归 AI 服务配置管理，分栏后仍需沿用原隐藏规则。
+    if (!visibleBusinessField(field.key)) continue;
+    const code = field.section === 'subtitle' ? 'subtitle' : 'watermark';
+    sections.find((item) => item.code === code)?.fields.push(field);
+  }
+  return sections.filter((section) => section.fields.length > 0);
+}
 const configLayout = ref<ReturnType<typeof configTabs>>([]);
 const invalidFields = ref<Record<string, boolean>>({});
 async function load() {
@@ -362,14 +377,14 @@ watch(
                 class="mb-4"
               />
               <p v-if="group.code === 'video_processing'" class="mb-4 text-sm">
-                本地修复引擎、处理方式、执行位置和云端凭据请前往
+                本地修复引擎、执行位置和云端凭据请前往
                 <RouterLink
                   to="/creatorhub/ai-config?tab=video"
                   class="text-primary"
                 >
                   AI 服务配置 → 视频处理
                 </RouterLink>
-                设置。下方保留视频上传限制。
+                设置。下方保留上传方式和视频上传限制。
               </p>
               <p v-if="group.code === 'image_processing'" class="mb-4 text-sm">
                 图片处理方式与运行环境请前往
@@ -381,7 +396,35 @@ watch(
                 </RouterLink>
                 设置。
               </p>
-              <div v-if="group.fields.length" class="config-grid">
+              <div
+                v-if="group.code === 'video_processing'"
+                class="grid gap-4 md:grid-cols-2"
+              >
+                <ElCard
+                  v-for="section in videoProcessingSections(group)"
+                  :key="section.code"
+                  class="config-section"
+                  :data-config-group="section.code"
+                  shadow="never"
+                  :header="section.label"
+                >
+                  <div class="config-grid">
+                    <AppConfigField
+                      v-for="field in section.fields"
+                      :key="`${configGeneration}-${field.key}`"
+                      :field="field"
+                      :model-value="config[field.key]"
+                      @update:model-value="
+                        (value) => (config[field.key] = value)
+                      "
+                      @validity-change="
+                        (valid) => (invalidFields[field.key] = !valid)
+                      "
+                    />
+                  </div>
+                </ElCard>
+              </div>
+              <div v-else-if="group.fields.length" class="config-grid">
                 <AppConfigField
                   v-for="field in group.fields.filter(
                     (item) =>

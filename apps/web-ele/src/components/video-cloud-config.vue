@@ -131,6 +131,68 @@ const errorMessage = ref('');
 const result = ref<CheckResult | null>(null);
 const pageActive = ref(true);
 const guideOpen = ref(false);
+const connHelpOpen = ref(false);
+// 每条命令单独一块、单独一个复制按钮。cd 这类路径提示放在文字说明里，不进命令块。
+const NODE_PROJECT_HINT = '含 .env 和 .venv 的工作节点项目目录';
+const nodeCheckSteps = [
+  {
+    title: '1. 确认地址和凭据已读取（在跑节点的机器执行）',
+    desc: '比如你的项目路径是：~/projects/Video-Tools/miniapp_qushuiyin_api_python（即含 .env 和 .venv 的工作节点目录），先执行第一条 cd 命令切换到该目录，再执行第二条；路径按你本机实际情况改。应显示 wss://api.dspyh.xyz/ws/worker；token 为空或没设置，启动时会让你手动输入，输错就连不上。',
+    commands: [
+      'cd ~/projects/Video-Tools/miniapp_qushuiyin_api_python',
+      String.raw`grep -E 'WORKER_SERVER_URL|WORKER_TOKEN' .env | sed -E 's/(WORKER_TOKEN=).*/\1***/'`,
+    ],
+  },
+  {
+    title: '2. 检查网络能否到服务器',
+    desc: '两条命令分别执行。0% 丢包、HTTP 200 说明网络正常；ping 不通查 DNS/代理，curl 返回 000 或超时说明 443 不通。',
+    commands: [
+      'ping -c 3 api.dspyh.xyz',
+      String.raw`curl -sS -o /dev/null -w "HTTP %{http_code}  耗时 %{time_total}s\n" https://api.dspyh.xyz/health`,
+    ],
+  },
+  {
+    title: '3. 检查 443 端口（wss 走 443）',
+    desc: '不通多为服务器没监听或防火墙拦截。',
+    commands: [
+      'timeout 10 bash -c \'cat < /dev/null > /dev/tcp/api.dspyh.xyz/443\' && echo "443 通" || echo "443 不通"',
+    ],
+  },
+  {
+    title: '4. 直接测 WebSocket 握手（最关键，能区分网络 / 凭据 / 服务端）',
+    desc: `先 cd 到${NODE_PROJECT_HINT}再执行整段脚本。结果解读：「握手成功」或「握手成功（连接已正常关闭）」= 网络、凭据、服务端都正常；「HTTP 403」= 同一 token 已有节点在线（start.sh 还开着），属正常保护，不是故障；「HTTP 401」= token 错或被禁用；「timeout / ConnectionRefused」= 服务端没监听。`,
+    commands: [
+      [
+        ".venv/bin/python - <<'EOF'",
+        'import asyncio, os',
+        'from dotenv import load_dotenv',
+        "load_dotenv('.env')",
+        'from websockets.asyncio.client import connect',
+        'from websockets.exceptions import ConnectionClosed',
+        "url = os.environ.get('WORKER_SERVER_URL')",
+        "token = os.environ.get('WORKER_TOKEN')",
+        "print('连接地址:', url)",
+        'async def main():',
+        '    try:',
+        "        async with connect(url, additional_headers={'Authorization': 'Bearer '+token}, open_timeout=15) as ws:",
+        "            print('握手成功')",
+        '    except ConnectionClosed:',
+        "        print('握手成功（连接已正常关闭）')",
+        '    except Exception as e:',
+        "        print('握手失败:', type(e).__name__, str(e)[:300], '｜可能同一 token 已有节点在线（start.sh 还开着），属正常保护，不是故障')",
+        'asyncio.run(main())',
+        'EOF',
+      ].join('\n'),
+    ],
+  },
+  {
+    title: '5. 看服务端有没有收到连接（在服务器上执行）',
+    desc: '节点一直重试但日志没有连接痕迹 → 请求根本没到服务器，重点查第 1-3 步，尤其 WSL 的代理/DNS。服务名以实际为准。',
+    commands: [
+      "journalctl -u creatorhub -n 50 --no-pager | grep -iE 'worker|websocket|ws|error'",
+    ],
+  },
+];
 const environment = ref<EnvironmentChecks>();
 const environmentChecking = ref(false);
 const environmentError = ref('');
@@ -379,6 +441,14 @@ onDeactivated(() => {
       >
         查看工作节点部署说明
       </ElButton>
+      <ElButton
+        v-if="displayMode === 'worker'"
+        text
+        type="primary"
+        @click="connHelpOpen = true"
+      >
+        节点连接不可用，如何检查？
+      </ElButton>
     </ElFormItem>
     <ElAlert
       v-if="form.mode === 'cloud'"
@@ -401,6 +471,34 @@ onDeactivated(() => {
       <WorkerNodeGuide />
       <template #footer>
         <ElButton type="primary" @click="guideOpen = false">知道了</ElButton>
+      </template>
+    </ElDialog>
+    <ElDialog
+      v-model="connHelpOpen"
+      title="节点连接不可用，如何检查？"
+      width="760px"
+      top="6vh"
+      destroy-on-close
+    >
+      <p class="help">
+        节点端提示「连接暂不可用」时，按顺序在<strong>运行节点的那台机器</strong>上执行下面的命令（第
+        5 步在服务器上执行）。把输出发我即可定位是哪一层的问题。 第 1、4 步需先
+        <code>cd</code> 到<strong>{{ NODE_PROJECT_HINT }}</strong>（命令块里不含该路径，请自行切换目录）。每条命令末尾的图标可单独复制。
+      </p>
+      <div v-for="step in nodeCheckSteps" :key="step.title" class="check-step">
+        <p class="check-title">{{ step.title }}</p>
+        <p class="help">{{ step.desc }}</p>
+        <div
+          v-for="(command, index) in step.commands"
+          :key="index"
+          class="check-code"
+        >
+          <pre>{{ command }}</pre>
+          <CopyValue :value="command" label="复制命令" icon-only />
+        </div>
+      </div>
+      <template #footer>
+        <ElButton type="primary" @click="connHelpOpen = false">知道了</ElButton>
       </template>
     </ElDialog>
     <template v-if="form.mode === 'local'">
@@ -788,5 +886,49 @@ onDeactivated(() => {
   margin-left: 0;
   font-size: 16px;
   font-weight: 600;
+}
+
+.check-step {
+  margin-bottom: 18px;
+}
+
+.check-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.help code {
+  padding: 1px 5px;
+  font-size: 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 3px;
+}
+
+.check-code {
+  position: relative;
+  padding: 10px 44px 10px 12px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-primary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.check-code pre {
+  margin: 0;
+  font: inherit;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.check-code :deep(.copy-value) {
+  position: absolute;
+  top: 4px;
+  right: 6px;
 }
 </style>

@@ -123,6 +123,16 @@ function changeCalendar(value: null | string) {
   const next = props.field.format === 'MM-DD' ? value.slice(5) : value;
   emit('update:modelValue', next);
 }
+/** 多选标签字段在服务端以英文逗号分隔的字符串保存。 */
+function tagValues(): string[] {
+  return String(props.modelValue ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+function changeTags(value: unknown) {
+  emit('update:modelValue', (Array.isArray(value) ? value : []).join(','));
+}
 </script>
 
 <template>
@@ -176,6 +186,20 @@ function changeCalendar(value: null | string) {
           :key="String(option.value)"
           :label="option.label"
           :value="option.value"
+        />
+      </ElSelect>
+      <ElSelect
+        v-else-if="field.control === 'tags'"
+        multiple
+        :model-value="tagValues()"
+        placeholder="请选择"
+        @update:model-value="changeTags"
+      >
+        <ElOption
+          v-for="option in field.options || []"
+          :key="String(option.value)"
+          :label="option.label"
+          :value="String(option.value)"
         />
       </ElSelect>
       <ElTimePicker
