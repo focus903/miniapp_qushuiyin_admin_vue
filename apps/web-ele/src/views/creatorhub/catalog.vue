@@ -138,6 +138,7 @@ function display(row:Row,k:string){
  if(k==='has_credentials')return value?'已配置':'未配置';
  if(['is_private','is_default','enabled'].includes(k))return Number(value)===1?'是':'否';
  if(k==='reason'&&String(value)==='direct-ticket')return '直传凭证已签发';
+ if(k==='reason'&&String(value).startsWith('client:'))return '直传未完成：'+String(value).slice(7);
  if(k==='reason'&&String(value).startsWith('direct-task:'))return '直传任务已提交';
  if(k==='reason'&&String(value).startsWith('direct-result:'))return '节点结果已直传';
  if(k==='reason'&&/^qiniu_(upload|domain)_http_[1-6][0-9]{2}$/.test(String(value)))return `${String(value).includes('_domain_')?'访问域名':'七牛上传'}返回 HTTP ${String(value).slice(-3)}`;

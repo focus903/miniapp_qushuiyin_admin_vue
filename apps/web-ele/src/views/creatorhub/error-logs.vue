@@ -61,6 +61,7 @@ interface Health {
   queueDrops: number;
   fileOnly: number;
   pending: number;
+  suppressed?: number;
 }
 const access = useAccessStore();
 const canDelete = computed(() =>
@@ -96,6 +97,15 @@ const degraded = computed(
 );
 const formattedTime = (value: number) =>
   new Date(value * 1000).toLocaleString();
+const filtered = computed(() =>
+  Boolean(
+    keyword.value ||
+      path.value ||
+      status.value !== undefined ||
+      level.value ||
+      dates.value?.[0],
+  ),
+);
 const stages: Record<string, string> = {
   request_validation: '请求参数校验',
   share_link_validation: '分享链接校验',
@@ -155,6 +165,59 @@ async function deleteLogs(values: string[]) {
     }
     clearSelection();
     ElMessage.success(`已删除 ${result.deleted} 条日志`);
+    await load();
+  } catch (error) {
+    ElMessage.error(
+      error instanceof Error ? error.message : '删除失败，请稍后重试',
+    );
+  } finally {
+    deleting.value = false;
+  }
+}
+async function clearLogs() {
+  if (!canDelete.value || deleting.value || busy.value) return;
+  const scoped = filtered.value;
+  deleting.value = true;
+  try {
+    try {
+      await ElMessageBox.confirm(
+        scoped
+          ? `将按当前筛选条件删除全部错误日志，数据库记录删除后无法恢复；本地日志文件仍按保留规则自动清理。`
+          : `将删除数据库中的全部错误日志，删除后无法恢复；本地日志文件仍按保留规则自动清理。`,
+        scoped ? '清空筛选结果' : '清空全部错误日志',
+        {
+          type: 'warning',
+          confirmButtonText: '确认删除',
+          cancelButtonText: '取消',
+        },
+      );
+    } catch {
+      return;
+    }
+    const result = await requestClient.post<{
+      deleted: number;
+    }>('/system/error-logs/clear', {
+      confirm: true,
+      keyword: keyword.value || '',
+      path: path.value || '',
+      status: status.value ?? null,
+      level: level.value || null,
+      start: dates.value?.[0]
+        ? Math.floor(dates.value[0].getTime() / 1000)
+        : null,
+      end: dates.value?.[1] ? Math.floor(dates.value[1].getTime() / 1000) : null,
+    });
+    if (dialog.value) {
+      detailGeneration++;
+      dialog.value = false;
+      selected.value = undefined;
+      detailBusy.value = false;
+    }
+    clearSelection();
+    page.value = 1;
+    ElMessage.success(
+      result.deleted > 0 ? `已删除 ${result.deleted} 条日志` : '没有可删除的日志',
+    );
     await load();
   } catch (error) {
     ElMessage.error(
@@ -354,6 +417,15 @@ onMounted(load);
         >
           批量删除
         </ElButton>
+        <ElButton
+          type="danger"
+          plain
+          :disabled="busy || deleting || total === 0"
+          :loading="deleting"
+          @click="clearLogs"
+        >
+          {{ filtered ? '删除筛选结果' : '全部删除' }}
+        </ElButton>
         <span>已选择 {{ checkedIds.length }} 条</span>
       </div>
       <ElTable
@@ -469,7 +541,8 @@ onMounted(load);
       <p v-if="health" class="storage-hint">
         当前节点文件目录：{{ health.directory }} · 保留
         {{ health.retentionDays }} 天 · 待入库 {{ health.pending }} 条 ·
-        维护期间仅写文件 {{ health.fileOnly }} 条
+        维护期间仅写文件 {{ health.fileOnly }} 条 · 重复抑制
+        {{ health.suppressed ?? 0 }} 条
       </p>
     </ElCard>
     <ElDialog v-model="dialog" title="错误详情" width="min(900px, 94vw)">
