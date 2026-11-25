@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
@@ -12,17 +12,18 @@ import AsrConfig from '#/components/asr-config.vue';
 import ImageProcessingConfig from '#/components/image-processing-config.vue';
 import VideoCloudConfig from '#/components/video-cloud-config.vue';
 import VideoNotesCookie from '#/components/video-notes-cookie.vue';
+import { usePersistedTab } from '#/utils/persisted-tab';
 const access = useAccessStore();
-const tab = ref('asr');
+const tab = usePersistedTab('ai-config', 'asr');
 const route = useRoute();
 watch(
   () => route.query.tab,
   (value) => {
-    tab.value =
+    if (
       typeof value === 'string' &&
       ['asr', 'image', 'llm', 'video', 'vlm', 'notes'].includes(value)
-        ? value
-        : 'asr';
+    )
+      tab.value = value;
   },
   { immediate: true },
 );

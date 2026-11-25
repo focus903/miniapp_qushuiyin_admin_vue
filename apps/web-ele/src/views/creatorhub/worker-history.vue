@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
   <ElDialog
     :model-value="modelValue"
     :title="`${nodeName} · 处理记录`"
-    width="min(1120px, 96vw)"
+    width="min(1680px, 96vw)"
     @update:model-value="(value) => emit('update:modelValue', value)"
   >
     <ElAlert
@@ -351,6 +351,16 @@ onBeforeUnmount(() => {
 {{
           kinds[row.kind] || row.kind
         }}
+</template>
+</ElTableColumn>
+      <ElTableColumn label="引擎" width="110" show-overflow-tooltip>
+<template #default="{ row }">
+{{ row.engine || '—' }}
+</template>
+</ElTableColumn>
+      <ElTableColumn label="执行次数" width="90">
+<template #default="{ row }">
+{{ row.attempts ?? '—' }}
 </template>
 </ElTableColumn>
       <ElTableColumn label="状态" width="120">

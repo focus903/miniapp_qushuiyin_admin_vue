@@ -24,6 +24,7 @@ import {
 } from 'element-plus';
 
 import { requestClient } from '#/api/request';
+import CopyValue from '#/components/copy-value.vue';
 import {
   adminRealtimeState,
   subscribeAdminEvents,
@@ -108,6 +109,48 @@ const selectedId = ref('');
 const detailBusy = ref(false);
 const detailError = ref('');
 const access = useAccessStore();
+const canCreateNode = () => access.accessCodes.includes('worker-nodes:update');
+const createOpen = ref(false);
+const createName = ref('gpu-node-1');
+const createBusy = ref(false);
+const createResult = ref<{ id: string; token: string } | null>(null);
+const createCaps = ref<string[]>([
+  'video.watermark',
+  'video.subtitle',
+  'image.watermark',
+  'audio.transcribe',
+]);
+function openCreate() {
+  createName.value = 'gpu-node-1';
+  createCaps.value = [
+    'video.watermark',
+    'video.subtitle',
+    'image.watermark',
+    'audio.transcribe',
+  ];
+  createResult.value = null;
+  createOpen.value = true;
+}
+async function createNode() {
+  if (createBusy.value) return;
+  createBusy.value = true;
+  try {
+    const result = await requestClient.post<{ id: string; token: string }>(
+      '/system/worker-nodes',
+      {
+        name: createName.value.trim() || 'gpu-node-1',
+        capabilities: createCaps.value,
+      },
+    );
+    createResult.value = result;
+    ElMessage.success('节点已创建，请立即复制凭据');
+    await load();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '创建节点失败');
+  } finally {
+    createBusy.value = false;
+  }
+}
 const deletingIds = ref(new Set<string>());
 let generation = 0;
 let detailGeneration = 0;
@@ -361,6 +404,15 @@ onUnmounted(() => {
     />
     <ElCard>
       <div class="node-filters">
+        <ElButton
+          v-if="canCreateNode()"
+          type="primary"
+          plain
+          :disabled="busy"
+          @click="openCreate"
+        >
+          创建节点
+        </ElButton>
         <ElInput
           v-model="keyword"
           placeholder="搜索节点名称"
@@ -402,12 +454,11 @@ onUnmounted(() => {
           min-width="160"
           show-overflow-tooltip
         />
-        <ElTableColumn
-          prop="id"
-          label="节点 ID"
-          min-width="200"
-          show-overflow-tooltip
-        />
+        <ElTableColumn label="节点 ID" min-width="200">
+<template #default="{ row }">
+<CopyValue :value="row.id" label="复制节点ID">{{ row.id }}</CopyValue>
+</template>
+</ElTableColumn>
         <ElTableColumn label="连接状态" width="110">
 <template #default="{ row }">
 <ElTag :type="tagType(row.status)">
@@ -506,6 +557,50 @@ onUnmounted(() => {
         顶部统计为全部节点数量，不随筛选条件变化。节点信息为上次刷新时的快照。
       </p>
     </ElCard>
+    <ElDialog
+      v-model="createOpen"
+      title="创建任务节点"
+      width="min(560px, 94vw)"
+      @closed="createResult = null"
+    >
+      <template v-if="!createResult">
+        <p class="node-note">
+          创建后把凭据填到节点 .env 的 WORKER_TOKEN；凭据仅显示一次，关闭后无法找回。
+        </p>
+        <ElInput
+          v-model="createName"
+          placeholder="节点名称，如 gpu-node-1"
+          maxlength="100"
+          aria-label="节点名称"
+        />
+        <p class="node-note">该节点可处理的任务（默认全选；连接测试不受此配置限制）</p>
+        <ElCheckboxGroup v-model="createCaps" class="cap-group">
+          <ElCheckbox v-for="kind in CAP_KINDS" :key="kind" :value="kind">
+            {{ taskName(kind) }}
+          </ElCheckbox>
+        </ElCheckboxGroup>
+      </template>
+      <template v-else>
+        <p class="node-note">节点已创建，请立即复制下面的凭据。</p>
+        <div class="created-row">
+          <span>节点 ID</span>
+          <CopyValue :value="createResult.id" label="复制节点ID">{{ createResult.id }}</CopyValue>
+        </div>
+        <div class="created-row">
+          <span>凭据</span>
+          <CopyValue :value="createResult.token" label="复制凭据">{{ createResult.token }}</CopyValue>
+        </div>
+      </template>
+      <template #footer>
+        <template v-if="!createResult">
+          <ElButton @click="createOpen = false">取消</ElButton>
+          <ElButton type="primary" :loading="createBusy" @click="createNode">
+            创建
+          </ElButton>
+        </template>
+        <ElButton v-else type="primary" @click="createOpen = false">完成</ElButton>
+      </template>
+    </ElDialog>
     <ElDialog
       v-model="capOpen"
       title="节点处理功能配置"
@@ -761,6 +856,21 @@ onUnmounted(() => {
 
 .node-note {
   margin-top: 14px;
+}
+
+.created-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  margin-top: 10px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.created-row > span {
+  flex: none;
+  color: var(--el-text-color-secondary);
 }
 
 .node-detail {

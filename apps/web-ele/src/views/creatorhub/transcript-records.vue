@@ -9,6 +9,8 @@ import {
   watch,
 } from 'vue';
 
+import { usePersistedTab } from '#/utils/persisted-tab';
+
 import { Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
@@ -56,7 +58,7 @@ type Row = {
 type Result = { items: Row[]; total: number };
 const access = useAccessStore();
 const allowed = computed(() => access.accessCodes.includes('transcripts:read'));
-const kind = ref('transcripts');
+const kind = usePersistedTab('transcript-records', 'transcripts');
 const page = ref(1);
 const size = ref(20);
 const total = ref(0);

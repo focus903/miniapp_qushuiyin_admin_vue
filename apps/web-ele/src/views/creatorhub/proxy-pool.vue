@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue';
+
+import { usePersistedTab } from '#/utils/persisted-tab';
 import { Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 import { ElAlert, ElButton, ElCard, ElCheckbox, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElMessage, ElMessageBox, ElOption, ElPagination, ElProgress, ElSelect, ElTable, ElTableColumn, ElTag, ElTooltip, ElTabs, ElTabPane } from 'element-plus';
@@ -22,7 +24,7 @@ interface PoolFilter { search: string; enabled?: boolean }
 const access = useAccessStore();
 const can = (action: string) => access.accessCodes.includes('proxy-pool:' + action);
 type Platform = 'custom' | 'webshare' | 'kuaidaili';
-const platform = ref<Platform>('custom');
+const platform = usePersistedTab<Platform>('proxy-pool', 'custom');
 const platformLabels:Record<Platform,string>={custom:'自定义代理',webshare:'Webshare',kuaidaili:'快代理'};
 const platformName = computed(() => platformLabels[platform.value]);
 const sourceInfo = ref<Source>();

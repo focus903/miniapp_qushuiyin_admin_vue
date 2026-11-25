@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+
+import { usePersistedTab } from '#/utils/persisted-tab';
 import { useAccessStore } from '@vben/stores';
 import {
   ElAlert, ElButton, ElCheckbox, ElDialog, ElMessage, ElMessageBox,
@@ -42,7 +44,7 @@ const pathRecord = ref<Backup>();
 function showPath(row: Backup) { pathRecord.value = row; pathDialog.value = true; }
 const selectedFile = ref<File>();
 const inputKey = ref(0);
-const tab = ref('backups');
+const tab = usePersistedTab('database', 'backups');
 const page = ref(1);
 let timer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;

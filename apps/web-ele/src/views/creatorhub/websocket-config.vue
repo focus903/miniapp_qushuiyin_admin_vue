@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+
+import { usePersistedTab } from '#/utils/persisted-tab';
 import { Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 import { ElAlert, ElButton, ElCard, ElForm, ElFormItem, ElInputNumber, ElMessage, ElTabPane, ElTabs } from 'element-plus';
@@ -26,7 +28,7 @@ const fieldGroups = [
 ];
 const access = useAccessStore();
 const canSave = computed(() => access.accessCodes.includes('websocket-config:update'));
-const tab = ref('admin');
+const tab = usePersistedTab('websocket-config', 'admin');
 const config = ref<Config>();
 const busy = ref(false);
 const saving = ref(false);

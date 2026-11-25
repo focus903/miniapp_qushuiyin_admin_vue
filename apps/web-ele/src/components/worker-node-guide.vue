@@ -1,12 +1,47 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { ElAlert, ElButton, ElCard } from 'element-plus';
+import { useAccessStore } from '@vben/stores';
 
+import {
+  ElAlert,
+  ElButton,
+  ElCard,
+  ElInput,
+  ElMessage,
+} from 'element-plus';
+
+import { requestClient } from '#/api/request';
 import CopyValue from '#/components/copy-value.vue';
 
 const router = useRouter();
+const access = useAccessStore();
 const goNodes = () => router.push('/creatorhub/worker-nodes');
+const canCreateNode = () => access.accessCodes.includes('worker-nodes:update');
+const nodeName = ref('gpu-node-1');
+const creatingNode = ref(false);
+const createdNode = ref<{ id: string; token: string } | null>(null);
+const createNodeError = ref('');
+async function createNode() {
+  const name = nodeName.value.trim() || 'gpu-node-1';
+  creatingNode.value = true;
+  createNodeError.value = '';
+  try {
+    const result = await requestClient.post<{ id: string; token: string }>(
+      '/system/worker-nodes',
+      { name },
+    );
+    createdNode.value = result;
+    ElMessage.success('节点已创建，请立即复制凭据');
+  } catch (error) {
+    createNodeError.value =
+      error instanceof Error ? error.message : '创建失败，请稍后重试';
+    ElMessage.error(createNodeError.value);
+  } finally {
+    creatingNode.value = false;
+  }
+}
 
 type ModelGroup = { name: string; note: string; commands: { label: string; value: string }[] };
 type Step = {
@@ -16,11 +51,27 @@ type Step = {
   groups?: ModelGroup[];
   tip?: string;
   button?: string;
+  quickCreate?: boolean;
 };
 const steps: Step[] = [
   {
     title: '1. 准备一台机器',
     desc: '可以是按量计费的云服务器或闲置电脑（推荐 Linux x86_64）。去字幕/去水印会把视频修复计算挪到这台机器，主站 CPU 不再被打满；具体用哪个引擎由后台切换。',
+    commands: [
+      {
+        label: '克隆后端项目（Gitee，HTTPS + 私人令牌）',
+        value: 'git clone https://focusfei:你的私人令牌@gitee.com/focusfei/miniapp_qushuiyin_api_python.git --depth 1',
+      },
+      {
+        label: '克隆中断时改用 HTTP/1.1（推荐重试）',
+        value: 'git -c http.version=HTTP/1.1 -c http.postBuffer=524288000 -c http.lowSpeedLimit=0 -c http.lowSpeedTime=999999 clone --depth 1 https://focusfei:你的私人令牌@gitee.com/focusfei/miniapp_qushuiyin_api_python.git',
+      },
+      {
+        label: '备用：下载 ZIP（可断点续传）',
+        value: 'curl -L --retry 10 --retry-all-errors -C - -o repo.zip "https://gitee.com/api/v5/repos/focusfei/miniapp_qushuiyin_api_python/zipball/master?access_token=你的私人令牌" && unzip -q repo.zip',
+      },
+    ],
+    tip: '报 curl 56 GnuTLS recv error (-54) / fetch-pack EOF，是网络中断或 Gitee 提前关闭连接（认证已通过，不是令牌错）。先重试第一条；仍失败就用 HTTP/1.1 那条；再不行用 ZIP 备用命令。ZIP 解压后进入实际目录继续第 2 步。私人令牌：Gitee 右上角头像 → 设置 → 私人令牌 → 生成新令牌，勾选 projects 权限（只显示一次）。SSH（git@）在部分云服务器 22 端口不通会卡住，故用 HTTPS。',
   },
   {
     title: '2. 同步项目并安装依赖',
@@ -34,12 +85,17 @@ const steps: Step[] = [
         label: '安装节点依赖（Python 3.11+）',
         value: '.venv/bin/python -m pip install -r requirements-worker.txt',
       },
+      {
+        label: '国内镜像（官方源慢或无法下载时用）',
+        value: '.venv/bin/python -m pip install -r requirements-worker.txt -i https://pypi.tuna.tsinghua.edu.cn/simple',
+      },
     ],
-    tip: '/root/work_node 指节点上放后端项目的目录，请换成你的实际路径（如 ~/projects/miniapp_qushuiyin_api_python）。节点不连数据库，不需要 MySQL 账号，不要装主站 requirements.txt（其中 numpy==2.5.3 要求 Python 3.12）。Windows 机器把 .venv/bin/python 换成 .venv\\Scripts\\python.exe。',
+    tip: '官方源慢或下载不了时，用下面的国内镜像命令；两个源装出的依赖完全一样。/root/work_node 指节点上放后端项目的目录，请换成你的实际路径（如 ~/projects/miniapp_qushuiyin_api_python）。节点不连数据库，不需要 MySQL 账号，不要装主站 requirements.txt（其中 numpy==2.5.3 要求 Python 3.12）。Windows 机器把 .venv/bin/python 换成 .venv\\Scripts\\python.exe。',
   },
   {
     title: '3. 在主站创建节点凭据',
-    desc: '在【主站】后端项目根目录执行，节点名称自定义：',
+    desc: '方式一：直接在下方填写名称并点击按钮创建；方式二：在【主站】后端项目根目录执行命令行。节点名称自定义：',
+    quickCreate: true,
     commands: [
       {
         label: '创建节点（Linux）',
@@ -85,7 +141,9 @@ const steps: Step[] = [
         note: '图片修复、视频逐帧修复；动画类效果好。',
         commands: [
           { label: 'CPU', value: '.venv/bin/python commands/install_lama.py --device cpu' },
+          { label: 'CPU · 国内镜像', value: '.venv/bin/python commands/install_lama.py --device cpu --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
           { label: 'GPU（推荐）', value: '.venv/bin/python commands/install_lama.py --device cuda' },
+          { label: 'GPU（推荐） · 国内镜像', value: '.venv/bin/python commands/install_lama.py --device cuda --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
         ],
       },
       {
@@ -93,7 +151,9 @@ const steps: Step[] = [
         note: '真人视频时序修复，速度快；需 N 卡获合理耗时。',
         commands: [
           { label: 'CPU', value: '.venv/bin/python commands/install_sttn.py --device cpu' },
+          { label: 'CPU · 国内镜像', value: '.venv/bin/python commands/install_sttn.py --device cpu --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
           { label: 'GPU（推荐）', value: '.venv/bin/python commands/install_sttn.py --device cuda' },
+          { label: 'GPU（推荐） · 国内镜像', value: '.venv/bin/python commands/install_sttn.py --device cuda --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
         ],
       },
       {
@@ -101,7 +161,9 @@ const steps: Step[] = [
         note: '运动剧烈视频最稳；显存要求高，建议 12GB 以上。',
         commands: [
           { label: 'CPU', value: '.venv/bin/python commands/install_propainter.py --device cpu' },
+          { label: 'CPU · 国内镜像', value: '.venv/bin/python commands/install_propainter.py --device cpu --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
           { label: 'GPU（推荐）', value: '.venv/bin/python commands/install_propainter.py --device cuda' },
+          { label: 'GPU（推荐） · 国内镜像', value: '.venv/bin/python commands/install_propainter.py --device cuda --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
         ],
       },
     ],
@@ -152,6 +214,29 @@ const steps: Step[] = [
         <span class="step-title">{{ step.title }}</span>
       </template>
       <p class="desc">{{ step.desc }}</p>
+      <div v-if="step.quickCreate" class="quick-create">
+        <template v-if="canCreateNode()">
+          <div v-if="createdNode" class="created-box">
+            <div class="created-line">
+              <span>节点ID：</span>
+              <CopyValue :value="createdNode.id" label="复制节点ID">{{ createdNode.id }}</CopyValue>
+            </div>
+            <div class="created-line">
+              <span>凭据（仅显示一次）：</span>
+              <CopyValue :value="createdNode.token" label="复制凭据">{{ createdNode.token }}</CopyValue>
+            </div>
+          </div>
+          <div class="quick-row">
+            <ElInput v-model="nodeName" placeholder="节点名称，如 gpu-node-1" maxlength="100" clearable />
+            <ElButton type="primary" :loading="creatingNode" @click="createNode">
+              在主站直接创建节点
+            </ElButton>
+          </div>
+          <p v-if="createNodeError" class="create-error">{{ createNodeError }}</p>
+          <p class="quick-tip">创建结果会显示在上方按钮之前，请立即复制凭据；下方命令行是另一种可选方式。</p>
+        </template>
+        <p v-else class="quick-tip">当前账号没有「配置处理功能」权限，请联系管理员，或使用下方命令行方式创建。</p>
+      </div>
       <div v-for="cmd in step.commands || []" :key="cmd.label" class="cmd">
         <CopyValue :value="cmd.value" label="复制命令">
           {{ cmd.label }}
@@ -162,12 +247,15 @@ const steps: Step[] = [
         <div v-for="group in step.groups" :key="group.name" class="model-col">
           <div class="model-name">{{ group.name }}</div>
           <p class="model-note">{{ group.note }}</p>
-          <div v-for="cmd in group.commands" :key="cmd.label" class="cmd">
-            <CopyValue :value="cmd.value" label="复制命令">
-              {{ cmd.label }}
-            </CopyValue>
-            <pre>{{ cmd.value }}</pre>
-          </div>
+          <template v-for="(cmd, index) in group.commands" :key="cmd.label">
+            <hr v-if="index === 2" class="model-divider" />
+            <div class="cmd">
+              <CopyValue :value="cmd.value" label="复制命令">
+                {{ cmd.label }}
+              </CopyValue>
+              <pre>{{ cmd.value }}</pre>
+            </div>
+          </template>
         </div>
       </div>
       <p v-if="step.tip" class="tip">{{ step.tip }}</p>
@@ -186,7 +274,61 @@ const steps: Step[] = [
 <style scoped>
 .worker-guide {
   width: 100%;
-  max-width: 1600px;
+  max-width: 1920px;
+}
+
+.quick-create {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+}
+
+.quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.quick-row :deep(.el-input) {
+  max-width: 320px;
+}
+
+.created-box {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--el-color-primary-light-9);
+  border-radius: 4px;
+}
+
+.created-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.created-line > span {
+  flex: none;
+  color: var(--el-text-color-secondary);
+}
+
+.create-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--el-color-danger);
+}
+
+.quick-tip {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--el-text-color-secondary);
 }
 
 .model-grid {
@@ -223,6 +365,12 @@ const steps: Step[] = [
 
 .model-col .cmd pre {
   font-size: 12px;
+}
+
+.model-divider {
+  border: 0;
+  border-top: 2px solid var(--el-color-primary-light-5);
+  margin: 16px 0;
 }
 
 @media (max-width: 900px) {

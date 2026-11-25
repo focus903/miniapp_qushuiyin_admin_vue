@@ -4,6 +4,8 @@ import CategoryVoices from './category-voices.vue';
 import CopyValue from '#/components/copy-value.vue';
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+
+import { usePersistedTab } from '#/utils/persisted-tab';
 import { Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 import { ElAlert, ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElMessage, ElMessageBox, ElOption, ElPagination, ElSelect, ElSwitch, ElTable, ElTableColumn, ElTabs, ElTabPane, ElTooltip } from 'element-plus';
@@ -24,7 +26,7 @@ const keyword=ref(''); const enabled=ref<number>(); const providerId=ref<number>
 const providers=ref<Row[]>([]); const voices=ref<Row[]>([]); const categories=ref<Row[]>([]);
 const dialog=ref(false); const creating=ref(false); const saving=ref(false); const selected=ref(''); const form=ref<Row>({}); const credentials=ref<Record<string,string>>({});
 const viewing=ref(false); const detail=ref<Row>({}); const switching=ref(new Set<string>()); const previewing=ref(new Set<string>()); const audioUrl=ref('');
-const uploadGuideOpen=ref(false);const guideTab=ref('cloud');
+const uploadGuideOpen=ref(false);const guideTab=usePersistedTab('catalog-guide', 'cloud');
 // 上传记录「功能」筛选，值需与后端 UPLOAD_FEATURE_FILTERS 一致。
 const uploadFeatures=[
  {value:'watermark-upload',label:'上传视频去水印'},

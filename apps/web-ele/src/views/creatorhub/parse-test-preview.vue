@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+
+import { usePersistedTab } from '#/utils/persisted-tab';
 import {
   ElAlert,
   ElButton,
@@ -41,7 +43,7 @@ const open = computed({
 const loading = ref(false);
 const error = ref('');
 const result = ref<ParseResult | null>(null);
-const activeTab = ref('video');
+const activeTab = usePersistedTab('parse-test', 'video');
 const previewIndex = ref<number | null>(null);
 
 const videos = computed(() => result.value?.videoUrls || []);

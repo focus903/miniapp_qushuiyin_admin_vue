@@ -464,7 +464,7 @@ onDeactivated(() => {
     <ElDialog
       v-model="guideOpen"
       title="工作节点部署说明"
-      width="min(1360px, 94vw)"
+      width="min(1680px, 96vw)"
       top="6vh"
       destroy-on-close
     >

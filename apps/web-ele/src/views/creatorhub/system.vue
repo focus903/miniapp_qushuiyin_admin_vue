@@ -41,6 +41,7 @@ import DouyinCookie from '#/components/douyin-cookie.vue';
 import PermissionTree from '#/components/permission-tree.vue';
 import WechatCookie from '#/components/wechat-cookie.vue';
 import { configTabs } from '#/utils/app-config-layout';
+import { usePersistedTab } from '#/utils/persisted-tab';
 type Admin = {
   id: string;
   username: string;
@@ -102,7 +103,7 @@ const visibleBusinessField = (key: string) =>
     'whisperDevice',
     'whisperModel',
   ].includes(key);
-const tab = ref('admins');
+const tab = usePersistedTab('system-main', 'admins');
 const userDialog = ref(false);
 const roleDialog = ref(false);
 const editingId = ref('');
@@ -114,7 +115,7 @@ const userForm = ref({
 });
 const roleForm = ref<Role>({ code: '', name: '', permissions: [] });
 const editingRole = ref(false);
-const configTab = ref('');
+const configTab = usePersistedTab('system-config', '');
 const outputIcons: Record<string, { icon: string; color: string }> = {
   videoOutputMode: { icon: 'mdi:video', color: 'var(--el-color-primary)' },
   wechatOutputMode: { icon: 'simple-icons:wechat', color: '#07c160' },

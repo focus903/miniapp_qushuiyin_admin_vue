@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
+
+import { usePersistedTab } from '#/utils/persisted-tab';
 import { Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 import { ElAlert, ElButton, ElCard, ElForm, ElFormItem, ElInputNumber, ElMessage, ElOption, ElSelect, ElSwitch, ElTabPane, ElTabs, ElTimeSelect } from 'element-plus';
@@ -29,7 +31,7 @@ const access = useAccessStore();
 const canSave = computed(() => access.accessCodes.includes('scheduled-tasks:update'));
 const tasks = ref<Task[]>([]);
 const drafts = reactive<Record<string, Draft>>({});
-const active = ref('');
+const active = usePersistedTab('scheduled-tasks', '');
 const busy = ref(false);
 const saving = ref('');
 const error = ref('');
