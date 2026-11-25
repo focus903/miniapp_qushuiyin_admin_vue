@@ -53,8 +53,8 @@ type Form = {
 };
 type Profile = Form & { configured: boolean; endpoint: string };
 type LocalValues = {
-  videoSubtitleEngine: 'lama' | 'opencv';
-  videoWatermarkEngine: 'lama' | 'opencv';
+  videoSubtitleEngine: 'lama' | 'opencv' | 'sttn' | 'propainter';
+  videoWatermarkEngine: 'lama' | 'opencv' | 'sttn' | 'propainter';
 };
 type Status = Profile & {
   local_values?: LocalValues;
@@ -464,7 +464,7 @@ onDeactivated(() => {
     <ElDialog
       v-model="guideOpen"
       title="工作节点部署说明"
-      width="720px"
+      width="min(1360px, 94vw)"
       top="6vh"
       destroy-on-close
     >
@@ -527,6 +527,8 @@ onDeactivated(() => {
             <ElRadioGroup v-model="localValues[task.engine]">
               <ElRadio value="lama">LaMa（效果优先）</ElRadio>
               <ElRadio value="opencv">OpenCV（CPU，速度优先）</ElRadio>
+              <ElRadio value="sttn">STTN（真人视频，时序修复）</ElRadio>
+              <ElRadio value="propainter">ProPainter（运动剧烈，显存要求高）</ElRadio>
             </ElRadioGroup>
           </ElFormItem>
           <template v-if="environment">
@@ -556,7 +558,7 @@ onDeactivated(() => {
         </section>
       </div>
       <p class="help">
-        LaMa 使用 AI 修复模型，OpenCV 使用传统修复算法。选择 worker
+        LaMa/STTN/ProPainter 使用 AI 修复模型，OpenCV 使用传统修复算法；STTN/ProPainter 仅在工作节点执行，需先在节点安装模型。选择 worker
         时，需先按部署说明配置在线工作节点，模型和依赖安装在实际执行的机器上；本机环境检查此时显示「未验证远程环境」属正常。保存后新任务生效，已提交任务保留提交时的引擎与执行位置。上传大小限制仍在「小程序配置
         → 视频处理」中设置。
       </p>

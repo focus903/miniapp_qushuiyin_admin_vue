@@ -8,29 +8,34 @@ import CopyValue from '#/components/copy-value.vue';
 const router = useRouter();
 const goNodes = () => router.push('/creatorhub/worker-nodes');
 
+type ModelGroup = { name: string; note: string; commands: { label: string; value: string }[] };
 type Step = {
   title: string;
   desc: string;
   commands?: { label: string; value: string }[];
+  groups?: ModelGroup[];
   tip?: string;
   button?: string;
 };
 const steps: Step[] = [
   {
     title: '1. 准备一台机器',
-    desc: '可以是按量计费的云服务器或闲置电脑（推荐 Linux x86_64）。去字幕/去水印会把 LaMa 逐帧推理挪到这台机器，主站 CPU 不再被打满。',
+    desc: '可以是按量计费的云服务器或闲置电脑（推荐 Linux x86_64）。去字幕/去水印会把视频修复计算挪到这台机器，主站 CPU 不再被打满；具体用哪个引擎由后台切换。',
   },
   {
     title: '2. 同步项目并安装依赖',
-    desc: '把后端项目 miniapp_qushuiyin_api_python 整个拷到这台机器，进入项目根目录后执行：',
+    desc: '把后端项目 miniapp_qushuiyin_api_python 拷到这台机器，进入项目根目录后安装节点专用依赖（不含主站服务、数据库和云 SDK）：',
     commands: [
       {
-        label: '安装 Python 依赖',
-        value:
-          '.venv/bin/python -m pip install -r requirements.txt && .venv/bin/python -m pip install websockets==15.0.1',
+        label: '创建虚拟环境',
+        value: 'cd /root/work_node\npython3 -m venv .venv',
+      },
+      {
+        label: '安装节点依赖（Python 3.11+）',
+        value: '.venv/bin/python -m pip install -r requirements-worker.txt',
       },
     ],
-    tip: '节点不连数据库，不需要 MySQL 账号。Windows 机器把 .venv/bin/python 换成 .venv\\Scripts\\python.exe。',
+    tip: '/root/work_node 指节点上放后端项目的目录，请换成你的实际路径（如 ~/projects/miniapp_qushuiyin_api_python）。节点不连数据库，不需要 MySQL 账号，不要装主站 requirements.txt（其中 numpy==2.5.3 要求 Python 3.12）。Windows 机器把 .venv/bin/python 换成 .venv\\Scripts\\python.exe。',
   },
   {
     title: '3. 在主站创建节点凭据',
@@ -62,19 +67,45 @@ const steps: Step[] = [
     tip: '本机测试可用 ws://127.0.0.1:8001/ws/worker；远程机器必须用 wss://，不能用 ws://。',
   },
   {
-    title: '5. 安装 LaMa 模型',
-    desc: '视频去字幕/去水印默认用 LaMa 引擎。模型不会随代码拷贝，需在这台节点机器上单独安装：',
+    title: '5. 安装模型',
+    desc: '先运行检查脚本，确认 CPU 核心、内存、是否有 NVIDIA GPU，以及三个模型是否已安装；再根据结果选择下面的安装命令（脚本最后会给出 --device 建议）。视频去水印/去字幕可切换 LaMa / STTN / ProPainter / OpenCV。前三者模型不会随代码拷贝，需在这台节点机器按需安装；OpenCV 不需要安装模型或独立环境，节点基础环境 requirements.txt 已包含 opencv-python：',
     commands: [
       {
-        label: 'CPU 机器',
-        value: '.venv/bin/python commands/install_lama.py --device cpu',
+        label: '检查机器环境（Linux）',
+        value: '.venv/bin/python commands/check_worker_env.py',
       },
       {
-        label: 'GPU 机器（推荐，快几十倍）',
-        value: '.venv/bin/python commands/install_lama.py --device cuda',
+        label: '检查机器环境（Windows）',
+        value: '.venv\\Scripts\\python.exe commands\\check_worker_env.py',
       },
     ],
-    tip: '模型装在 data/tools/lama/，和机器绑定：换机器、换系统、CPU 改 GPU 都要重装一遍。只用 OpenCV 引擎可跳过这步。',
+    groups: [
+      {
+        name: 'LaMa',
+        note: '图片修复、视频逐帧修复；动画类效果好。',
+        commands: [
+          { label: 'CPU', value: '.venv/bin/python commands/install_lama.py --device cpu' },
+          { label: 'GPU（推荐）', value: '.venv/bin/python commands/install_lama.py --device cuda' },
+        ],
+      },
+      {
+        name: 'STTN',
+        note: '真人视频时序修复，速度快；需 N 卡获合理耗时。',
+        commands: [
+          { label: 'CPU', value: '.venv/bin/python commands/install_sttn.py --device cpu' },
+          { label: 'GPU（推荐）', value: '.venv/bin/python commands/install_sttn.py --device cuda' },
+        ],
+      },
+      {
+        name: 'ProPainter',
+        note: '运动剧烈视频最稳；显存要求高，建议 12GB 以上。',
+        commands: [
+          { label: 'CPU', value: '.venv/bin/python commands/install_propainter.py --device cpu' },
+          { label: 'GPU（推荐）', value: '.venv/bin/python commands/install_propainter.py --device cuda' },
+        ],
+      },
+    ],
+    tip: '检查脚本只读本机信息，不联网、不需要额外依赖；看到 NVIDIA GPU 才选 cuda 命令，只有 CPU 或显存不足就选 cpu。模型装在 data/tools/{lama,sttn,propainter}/，与机器绑定：换机器、换系统、CPU 改 GPU 都要重装。Windows 把 .venv/bin/python 换成 .venv\\Scripts\\python.exe。',
   },
   {
     title: '6. 启动节点',
@@ -105,7 +136,7 @@ const steps: Step[] = [
 <template>
   <div class="worker-guide">
     <ElAlert
-      title="工作节点把视频去字幕/去水印这类 CPU 密集任务派到独立机器执行，本机只做调度。节点跑的仍是 LaMa/OpenCV 本地模型，不调用云端付费 API。"
+      title="工作节点把视频去字幕/去水印这类 CPU 密集任务派到独立机器执行，本机只做调度。节点跑的仍是 LaMa/STTN/ProPainter/OpenCV 本地模型，不调用云端付费 API。"
       type="info"
       :closable="false"
       show-icon
@@ -127,6 +158,18 @@ const steps: Step[] = [
         </CopyValue>
         <pre>{{ cmd.value }}</pre>
       </div>
+      <div v-if="step.groups" class="model-grid">
+        <div v-for="group in step.groups" :key="group.name" class="model-col">
+          <div class="model-name">{{ group.name }}</div>
+          <p class="model-note">{{ group.note }}</p>
+          <div v-for="cmd in group.commands" :key="cmd.label" class="cmd">
+            <CopyValue :value="cmd.value" label="复制命令">
+              {{ cmd.label }}
+            </CopyValue>
+            <pre>{{ cmd.value }}</pre>
+          </div>
+        </div>
+      </div>
       <p v-if="step.tip" class="tip">{{ step.tip }}</p>
       <ElButton v-if="step.button" type="primary" plain @click="goNodes">
         {{ step.button }}
@@ -141,6 +184,53 @@ const steps: Step[] = [
   </div>
 </template>
 <style scoped>
+.worker-guide {
+  width: 100%;
+  max-width: 1600px;
+}
+
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 4px 0 12px;
+}
+
+.model-col {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+}
+
+.model-name {
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.model-note {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.model-col .cmd {
+  margin-bottom: 8px;
+}
+
+.model-col .cmd pre {
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .model-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .step-title {
   font-size: 15px;
   font-weight: 600;
