@@ -55,6 +55,8 @@ type Profile = Form & { configured: boolean; endpoint: string };
 type LocalValues = {
   videoSubtitleEngine: 'lama' | 'opencv' | 'sttn' | 'propainter';
   videoWatermarkEngine: 'lama' | 'opencv' | 'sttn' | 'propainter';
+  videoSttnClip: number;
+  videoPropainterClip: number;
 };
 type Status = Profile & {
   local_values?: LocalValues;
@@ -121,6 +123,8 @@ const form = reactive<Form>(defaults('tencent_mps'));
 const localValues = reactive<LocalValues>({
   videoSubtitleEngine: 'lama',
   videoWatermarkEngine: 'lama',
+  videoSttnClip: 30,
+  videoPropainterClip: 80,
 });
 const drafts = reactive<Partial<Record<Provider, Form>>>({});
 const status = ref<Status>();
@@ -530,6 +534,36 @@ onDeactivated(() => {
               <ElRadio value="sttn">STTN（真人视频，时序修复）</ElRadio>
               <ElRadio value="propainter">ProPainter（运动剧烈，显存要求高）</ElRadio>
             </ElRadioGroup>
+          </ElFormItem>
+          <ElFormItem
+            v-if="localValues[task.engine] === 'sttn'"
+            label="STTN 时序窗口帧数"
+          >
+            <ElInputNumber
+              v-model="localValues.videoSttnClip"
+              :min="20"
+              :max="120"
+              :precision="0"
+            />
+            <p class="help">
+              20到120的整数，默认30。一次送入模型推理的帧数，越大越稳但越慢；仅影响新提交的
+              STTN 任务，节点端生效。
+            </p>
+          </ElFormItem>
+          <ElFormItem
+            v-if="localValues[task.engine] === 'propainter'"
+            label="ProPainter 时序窗口帧数"
+          >
+            <ElInputNumber
+              v-model="localValues.videoPropainterClip"
+              :min="20"
+              :max="120"
+              :precision="0"
+            />
+            <p class="help">
+              20到120的整数，默认80。一次送入模型推理的帧数，越大修复越连贯但越慢、显存占用越高；仅影响新提交的
+              ProPainter 任务，节点端生效。
+            </p>
           </ElFormItem>
           <template v-if="environment">
             <ElAlert
