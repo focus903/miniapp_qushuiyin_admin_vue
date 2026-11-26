@@ -134,6 +134,10 @@ const steps: Step[] = [
         label: '检查机器环境（Windows）',
         value: '.venv\\Scripts\\python.exe commands\\check_worker_env.py',
       },
+      {
+        label: '下载共用 wheel（四个引擎只下一次，Linux）',
+        value: "mkdir -p /workspace/wheels && cd /workspace/wheels && curl -fLO 'https://mirrors.aliyun.com/pytorch-wheels/cu126/torch-2.8.0%2Bcu126-cp312-cp312-manylinux_2_28_x86_64.whl' && curl -fLO 'https://mirrors.aliyun.com/pytorch-wheels/cu126/torchvision-0.23.0%2Bcu126-cp312-cp312-manylinux_2_28_x86_64.whl'",
+      },
     ],
     groups: [
       {
@@ -144,6 +148,7 @@ const steps: Step[] = [
           { label: 'CPU · 国内镜像', value: '.venv/bin/python commands/install_lama.py --device cpu --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
           { label: 'GPU（推荐）', value: '.venv/bin/python commands/install_lama.py --device cuda' },
           { label: 'GPU（推荐） · 国内镜像', value: '.venv/bin/python commands/install_lama.py --device cuda --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
+          { label: 'GPU · 共用 wheel（推荐）', value: '.venv/bin/python commands/install_lama.py --device cuda --torch-index /workspace/wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
         ],
       },
       {
@@ -154,6 +159,7 @@ const steps: Step[] = [
           { label: 'CPU · 国内镜像', value: '.venv/bin/python commands/install_sttn.py --device cpu --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
           { label: 'GPU（推荐）', value: '.venv/bin/python commands/install_sttn.py --device cuda' },
           { label: 'GPU（推荐） · 国内镜像', value: '.venv/bin/python commands/install_sttn.py --device cuda --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
+          { label: 'GPU · 共用 wheel（推荐）', value: '.venv/bin/python commands/install_sttn.py --device cuda --torch-index /workspace/wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
         ],
       },
       {
@@ -164,10 +170,20 @@ const steps: Step[] = [
           { label: 'CPU · 国内镜像', value: '.venv/bin/python commands/install_propainter.py --device cpu --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
           { label: 'GPU（推荐）', value: '.venv/bin/python commands/install_propainter.py --device cuda' },
           { label: 'GPU（推荐） · 国内镜像', value: '.venv/bin/python commands/install_propainter.py --device cuda --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
+          { label: 'GPU · 共用 wheel（推荐）', value: '.venv/bin/python commands/install_propainter.py --device cuda --torch-index /workspace/wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
+        ],
+      },
+      {
+        name: 'DiffuEraser',
+        note: '扩散模型，去字幕/水印效果最好；需 20GB 以上显存（默认960约540P），720P 要 33GB。模型权重约 13GB，先确认数据盘空间充足。依赖 ProPainter 权重，需先装上面的 ProPainter。',
+        commands: [
+          { label: 'GPU（唯一可用）', value: '.venv/bin/python commands/install_diffueraser.py --device cuda' },
+          { label: 'GPU · 国内镜像', value: '.venv/bin/python commands/install_diffueraser.py --device cuda --torch-index https://mirrors.aliyun.com/pytorch-wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
+          { label: 'GPU · 共用 wheel（推荐）', value: '.venv/bin/python commands/install_diffueraser.py --device cuda --torch-index /workspace/wheels --pypi-index https://pypi.tuna.tsinghua.edu.cn/simple' },
         ],
       },
     ],
-    tip: '检查脚本只读本机信息，不联网、不需要额外依赖；看到 NVIDIA GPU 才选 cuda 命令，只有 CPU 或显存不足就选 cpu。模型装在 data/tools/{lama,sttn,propainter}/，与机器绑定：换机器、换系统、CPU 改 GPU 都要重装。Windows 把 .venv/bin/python 换成 .venv\\Scripts\\python.exe。',
+    tip: '检查脚本只读本机信息，不联网、不需要额外依赖；看到 NVIDIA GPU 才选 cuda 命令，只有 CPU 或显存不足就选 cpu。装 CUDA 依赖推荐先执行上面的「下载共用 wheel」：wheel 只下一次，四个引擎统一用「GPU · 共用 wheel」命令从本地目录安装，避免各下各的重复下载 821MB；wheel 文件名对应 Python 3.12（cp312），版本不同需换文件名，CPU 模式不能用这份 cu126 wheel。模型装在 data/tools/{lama,sttn,propainter,diffueraser}/，与机器绑定：换机器、换系统、CPU 改 GPU 都要重装。DiffuEraser 从 ModelScope 国内源下载约 13GB 权重，可重复运行续传。Windows 把 .venv/bin/python 换成 .venv\\Scripts\\python.exe。',
   },
   {
     title: '6. 启动节点',
@@ -248,7 +264,7 @@ const steps: Step[] = [
           <div class="model-name">{{ group.name }}</div>
           <p class="model-note">{{ group.note }}</p>
           <template v-for="(cmd, index) in group.commands" :key="cmd.label">
-            <hr v-if="index === 2" class="model-divider" />
+            <hr v-if="index === 2 && group.commands.length > 4" class="model-divider" />
             <div class="cmd">
               <CopyValue :value="cmd.value" label="复制命令">
                 {{ cmd.label }}

@@ -28,7 +28,7 @@ import { requestClient } from '#/api/request';
 import CopyValue from '#/components/copy-value.vue';
 import WorkerNodeGuide from '#/components/worker-node-guide.vue';
 
-type Provider = 'aliyun_ims' | 'tencent_mps' | 'volc_mediakit';
+type Provider = 'aliyun_ims' | 'tencent_mps' | 'volc_mediakit' | 'wuhenai';
 type Form = {
   access_key_id: string;
   access_key_secret: string;
@@ -50,14 +50,18 @@ type Form = {
   timeout_seconds: number;
   subtitle_tool: string;
   check_task_id: string;
+  wuhenai_model: string;
+  wuhenai_method: string;
 };
 type Profile = Form & { configured: boolean; endpoint: string };
 type LocalValues = {
-  videoSubtitleEngine: 'lama' | 'opencv' | 'sttn' | 'propainter';
-  videoWatermarkEngine: 'lama' | 'opencv' | 'sttn' | 'propainter';
+  videoSubtitleEngine: 'lama' | 'opencv' | 'sttn' | 'propainter' | 'diffueraser';
+  videoWatermarkEngine: 'lama' | 'opencv' | 'sttn' | 'propainter' | 'diffueraser';
   videoSttnClip: number;
   videoPropainterClip: number;
   videoPropainterDilation: number;
+  videoDiffueraserSize: number;
+  videoDiffueraserDilation: number;
 };
 type Status = Profile & {
   local_values?: LocalValues;
@@ -95,6 +99,7 @@ const providers = [
   { key: 'aliyun_ims' as const, label: '阿里云 IMS' },
   { key: 'tencent_mps' as const, label: '腾讯云 MPS' },
   { key: 'volc_mediakit' as const, label: '火山引擎 AI MediaKit' },
+  { key: 'wuhenai' as const, label: '无痕AI' },
 ];
 function defaults(provider: Provider): Form {
   return {
@@ -118,6 +123,8 @@ function defaults(provider: Provider): Form {
     timeout_seconds: 20,
     subtitle_tool: 'erase-video-subtitle-pro',
     check_task_id: '',
+    wuhenai_model: 'video_removal_std',
+    wuhenai_method: 'auto',
   };
 }
 const form = reactive<Form>(defaults('tencent_mps'));
@@ -127,6 +134,8 @@ const localValues = reactive<LocalValues>({
   videoSttnClip: 30,
   videoPropainterClip: 80,
   videoPropainterDilation: 4,
+  videoDiffueraserSize: 960,
+  videoDiffueraserDilation: 8,
 });
 const drafts = reactive<Partial<Record<Provider, Form>>>({});
 const status = ref<Status>();
@@ -232,6 +241,7 @@ const endpoint = computed(() => {
   if (isTencent.value) return 'https://mps.tencentcloudapi.com';
   if (form.provider === 'aliyun_ims')
     return `https://ice.${form.aliyun_region}.aliyuncs.com`;
+  if (form.provider === 'wuhenai') return 'https://api.wuhenai.com/v2';
   return 'https://mediakit.cn-beijing.volces.com';
 });
 function payload() {
@@ -262,6 +272,13 @@ function payload() {
       aliyun_subtitle_model: form.aliyun_subtitle_model,
       aliyun_subtitle_template_id: form.aliyun_subtitle_template_id,
       aliyun_watermark_template_id: form.aliyun_watermark_template_id,
+    };
+  if (form.provider === 'wuhenai')
+    return {
+      ...common,
+      api_key: form.api_key,
+      wuhenai_model: form.wuhenai_model,
+      wuhenai_method: form.wuhenai_method,
     };
   return {
     ...common,
@@ -535,6 +552,7 @@ onDeactivated(() => {
               <ElRadio value="opencv">OpenCV（CPU，速度优先）</ElRadio>
               <ElRadio value="sttn">STTN（真人视频，时序修复）</ElRadio>
               <ElRadio value="propainter">ProPainter（运动剧烈，显存要求高）</ElRadio>
+              <ElRadio value="diffueraser">DiffuEraser（扩散模型，效果最好，需20G+显存）</ElRadio>
             </ElRadioGroup>
           </ElFormItem>
           <ElFormItem
@@ -580,6 +598,36 @@ onDeactivated(() => {
             <p class="help">
               0到12的整数，默认4。遮挡区域向外扩张的像素数，调小可减少修复区域的噪点纹理；0
               表示不膨胀。仅影响新提交的 ProPainter 任务，节点端生效。
+            </p>
+          </ElFormItem>
+          <ElFormItem
+            v-if="localValues[task.engine] === 'diffueraser'"
+            label="DiffuEraser 处理尺寸（长边像素）"
+          >
+            <ElInputNumber
+              v-model="localValues.videoDiffueraserSize"
+              :min="256"
+              :max="1920"
+              :precision="0"
+            />
+            <p class="help">
+              256到1920的整数，默认960（约540P）。越大越清晰但显存和耗时按面积增长：960约需20G显存，1280（720P）约需33G；显存不足会推理失败。仅影响新提交的
+              DiffuEraser 任务，节点端生效。
+            </p>
+          </ElFormItem>
+          <ElFormItem
+            v-if="localValues[task.engine] === 'diffueraser'"
+            label="DiffuEraser mask 膨胀（像素）"
+          >
+            <ElInputNumber
+              v-model="localValues.videoDiffueraserDilation"
+              :min="0"
+              :max="12"
+              :precision="0"
+            />
+            <p class="help">
+              0到12的整数，默认8（官方默认）。固定水印可调小到2，字幕用默认即可。仅影响新提交的
+              DiffuEraser 任务，节点端生效。
             </p>
           </ElFormItem>
           <template v-if="environment">
@@ -632,7 +680,9 @@ onDeactivated(() => {
               ? '使用腾讯云 API 密钥 SecretId / SecretKey，需开通媒体处理（MPS）。'
               : form.provider === 'aliyun_ims'
                 ? '使用阿里云 AccessKey，需开通智能媒体服务（IMS）并完成 RAM 和存储授权。'
-                : '使用火山引擎 AI MediaKit API Key；与火山方舟的模型服务配置独立。'
+                : form.provider === 'wuhenai'
+                  ? '使用无痕AI API Key，按积分计费；需在基础配置填写公网接口地址用于接收处理结果。'
+                  : '使用火山引擎 AI MediaKit API Key；与火山方舟的模型服务配置独立。'
           }}
         </p>
       </ElFormItem>
@@ -719,6 +769,59 @@ onDeactivated(() => {
             target="_blank"
             rel="noopener noreferrer"
             >腾讯云接入说明</a>
+        </p>
+      </template>
+      <template v-else-if="form.provider === 'wuhenai'">
+        <ElFormItem label="API Key">
+          <ElInput
+            v-model="form.api_key"
+            :type="form.api_key === '************' ? 'text' : 'password'"
+            :show-password="form.api_key !== '************'"
+            autocomplete="new-password"
+            placeholder="无痕AI API Key"
+            maxlength="2048"
+          />
+          <p class="help">
+            在
+            <a
+              href="https://api.wuhenai.com/manager/"
+              target="_blank"
+              rel="noopener noreferrer"
+              >无痕AI 管理工作台</a
+            >
+            创建并复制 API Key。
+          </p>
+        </ElFormItem>
+        <div class="fields">
+          <ElFormItem label="处理模型">
+            <ElSelect v-model="form.wuhenai_model">
+              <ElOption
+                label="STD 标准（效果更好，约 0.36 元/分钟）"
+                value="video_removal_std"
+              />
+              <ElOption
+                label="PRO 高级（速度更快，约 0.72 元/分钟）"
+                value="video_removal_pro"
+              />
+            </ElSelect>
+          </ElFormItem>
+          <ElFormItem label="处理方式">
+            <ElSelect v-model="form.wuhenai_method">
+              <ElOption label="自动（有框选则局部，否则全屏）" value="auto" />
+              <ElOption label="始终全屏自动识别" value="all_area" />
+              <ElOption label="始终按框选区域" value="sel_area" />
+            </ElSelect>
+          </ElFormItem>
+        </div>
+        <p class="help">
+          去水印与去字幕共用此接口。用户框选区域时按局部处理，未框选时全屏处理。
+          结果由无痕AI回传主站，需在基础配置中填写小程序接口地址（公网可访问）。
+          处理按积分计费，失败不扣费。<a
+            href="https://www.wuhenai.com/api-docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            >无痕AI接口文档</a
+          >
         </p>
       </template>
       <template v-else-if="form.provider === 'volc_mediakit'">
