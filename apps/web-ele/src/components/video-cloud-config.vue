@@ -230,6 +230,9 @@ const displayMode = computed<DisplayMode>({
   set: (value) => {
     if (value === 'cloud') {
       form.mode = 'cloud';
+      // 云端不走本地/节点引擎，把 execution 复位，避免遗留 worker 让配置产生歧义。
+      form.subtitle_execution = 'local';
+      form.watermark_execution = 'local';
       return;
     }
     form.mode = 'local';
@@ -478,7 +481,9 @@ onDeactivated(() => {
       :title="
         isTencent
           ? '腾讯云 MPS 使用 COS 传入原视频并取回擦除结果，配置保存后对新任务生效。'
-          : '此供应商可保存配置，新任务暂按已保存的本地处理设置执行。'
+          : form.provider === 'wuhenai'
+            ? '无痕AI 按 API 计费，保存后新任务直接由无痕AI 处理，不再走本地或节点引擎；结果回传方式取决于「存储管理 → 存储桶」的 S3 直传是否可用。'
+            : '此供应商可保存配置，新任务暂按已保存的本地处理设置执行。'
       "
       type="info"
       :closable="false"

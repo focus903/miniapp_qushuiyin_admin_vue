@@ -106,18 +106,19 @@ const qiniuRegions=[
 ];
 const qiniuRegionTip='七牛云区域代码（保存的仍是 z0/z1/z2 等值）：\n'+qiniuRegions.map(r=>`${r.label}`).join('\n')+'\n上传域名会按区域自动推导；改完下次签发凭证即生效。';
 const qiniuUploadTip='七牛云上传地址：\n留空时按「区域」自动推导上传域名，例如 z2 → https://up-z2.qiniup.com。\n显式填写的上传地址优先级最高，会盖掉区域推导；换区域时请同步修改或清空。\n改完无需重启，下次签发凭证即生效。';
+const qiniuS3Tip='S3 兼容直传（无痕AI 专用）：\n用于「上传方式 = 上传到云端」的任务——无痕AI 处理完直接把结果 PUT 到该空间，主站不接收、不中转，播放走签名地址，不占服务器出方向带宽。\n未配置或不支持时结果退回主站回传：主站要自己收文件，用户下载还会占满出方向带宽（3Mbps 下 30MB 约 80 秒）。\n按存储厂家自动匹配端点与区域：七牛已支持，阿里云 OSS / 腾讯云 COS 接入后同样生效。保存本桶时会自动探测并写入，失败请检查 AK/SK 与桶名。';
 function uploadSourceLabel(value: unknown){ return ({configured:'（指定）',region:'（区域推导）',default:'（默认）'} as Row)[String(value)]||''; }
 function columnMinWidth(column: string){
- if(resource.value==='buckets')return ({name:120,code:120,provider:100,bucket:130,region:110,domain:220,upload_url:240,enabled:76,is_default:84} as Row)[column]||100;
+ if(resource.value==='buckets')return ({name:120,code:120,provider:100,bucket:130,region:110,s3_region:150,domain:220,upload_url:240,enabled:76,is_default:84} as Row)[column]||100;
  if(resource.value==='uploads')return ({created:170,object_key:360,media_type:90,size_bytes:100,status:100,reason:220,bucket_code:150} as Row)[column]||140;
  if(['preview_text','object_key'].includes(column))return 320;
  if(['domain','upload_url'].includes(column))return 260;
  return 140;
 }
-const labels:Record<string,string>={voice_name:'所属音色',categories:'所属分类',id:'ID',name:'名称',code:'英文标识',provider:'存储厂家',provider_id:'配音厂家',voice_code:'厂家音色标识',speech_type:'配音类型',sex:'性别',preview_text:'试听文案',default_preview_text:'默认试听文案',enabled:'启用状态',sort_order:'排序',weight:'权重',category_id:'分类',voice_id:'音色',tag:'标签',region:'区域',max_chars:'单次最大字数',has_credentials:'已配置凭据',bucket:'桶名称',domain:'访问域名',upload_url:'上传地址',is_private:'私有桶',is_default:'默认桶',fingerprint:'内容指纹',audio_url:'试听文件地址',storage_type:'存储类型',object_key:'文件路径',storage_ref:'原桶配置指纹',updated_at:'更新时间',created:'上传时间',bucket_code:'原桶代码',status:'上传结果',reason:'结果原因',size_bytes:'文件大小',media_type:'媒体类型'};
+const labels:Record<string,string>={voice_name:'所属音色',categories:'所属分类',id:'ID',name:'名称',code:'英文标识',provider:'存储厂家',provider_id:'配音厂家',voice_code:'厂家音色标识',speech_type:'配音类型',sex:'性别',preview_text:'试听文案',default_preview_text:'默认试听文案',enabled:'启用状态',sort_order:'排序',weight:'权重',category_id:'分类',voice_id:'音色',tag:'标签',region:'区域',max_chars:'单次最大字数',has_credentials:'已配置凭据',bucket:'桶名称',domain:'访问域名',upload_url:'上传地址',is_private:'私有桶',is_default:'默认桶',s3_region:'S3 直传',fingerprint:'内容指纹',audio_url:'试听文件地址',storage_type:'存储类型',object_key:'文件路径',storage_ref:'原桶配置指纹',updated_at:'更新时间',created:'上传时间',bucket_code:'原桶代码',status:'上传结果',reason:'结果原因',size_bytes:'文件大小',media_type:'媒体类型'};
 const credentialLabels:Record<string,string>={secret_id:'SecretId',secret_key:'SecretKey',access_key_id:'AccessKeyId',access_key_secret:'AccessKeySecret',app_key:'AppKey',access_key:'AccessKey'};
 const credentialKeys=computed(()=>resource.value==='buckets'?['access_key','secret_key']:form.value.code==='aliyun'?['access_key_id','access_key_secret','app_key']:['secret_id','secret_key']);
-const columns=computed(()=>({providers:['name','code','enabled','max_chars','has_credentials'],voices:['name','provider_id','voice_code','sex','enabled'],categories:['name','code','weight','enabled'],relations:['category_id','voice_id','tag','sort_order','enabled'],samples:['voice_name','preview_text','categories','storage_type','updated_at'],buckets:['name','code','provider','bucket','region','domain','upload_url','enabled','is_default'],uploads:['created','object_key','media_type','size_bytes','status','reason','bucket_code']}[resource.value] || []));
+const columns=computed(()=>({providers:['name','code','enabled','max_chars','has_credentials'],voices:['name','provider_id','voice_code','sex','enabled'],categories:['name','code','weight','enabled'],relations:['category_id','voice_id','tag','sort_order','enabled'],samples:['voice_name','preview_text','categories','storage_type','updated_at'],buckets:['name','code','provider','bucket','region','s3_region','domain','upload_url','enabled','is_default'],uploads:['created','object_key','media_type','size_bytes','status','reason','bucket_code']}[resource.value] || []));
 const defaults:Record<string,Row>={providers:{code:'tencent',name:'',enabled:0,sort_order:0,region:'ap-guangzhou',max_chars:600,default_preview_text:'你好，欢迎使用创作工具箱。'},voices:{provider_id:undefined,voice_code:'',name:'',speech_type:'',sex:'',preview_text:'',enabled:1},categories:{code:'',name:'',enabled:1,weight:0},relations:{category_id:undefined,voice_id:undefined,tag:'',enabled:1,sort_order:0},buckets:{code:'',name:'',provider:'qiniu',bucket:'',region:'',upload_url:'',domain:'',is_private:0,enabled:0,is_default:0}};
 function key(row:Row){return resource.value==='relations'?`${row.category_id}:${row.voice_id}`:String(row.id??row.code);}
 function display(row:Row,k:string){
@@ -137,6 +138,7 @@ function display(row:Row,k:string){
  if(['created','updated_at'].includes(k))return value?new Date(Number(value)*1000).toLocaleString('zh-CN'):'—';
  if(k==='status')return ({success:'成功',pending:'待上传',fallback:'已回退本地',failed:'失败'} as Row)[value]??value;
  if(k==='sex')return ({male:'男',female:'女',child:'童声'} as Row)[value]??(value||'未指定');
+ if(k==='s3_region')return value?`可用 · ${value}`:'未配置';
  if(k==='has_credentials')return value?'已配置':'未配置';
  if(['is_private','is_default','enabled'].includes(k))return Number(value)===1?'是':'否';
  if(k==='reason'&&String(value)==='direct-ticket')return '直传凭证已签发';
@@ -163,8 +165,20 @@ async function openDocument(row:Row){
  catch(e){docContent.value=e instanceof Error?e.message:'文档加载失败';}
  finally{docLoading.value=false;}
 }
-function edit(row?:Row){creating.value=!row;selected.value=row?key(row):'';form.value=Object.fromEntries(Object.keys(defaults[resource.value]||{}).map(k=>[k,row?row[k]:defaults[resource.value]![k]]));credentials.value={};dialog.value=true;}
-async function save(){saving.value=true;try{const body={...form.value,...(['providers','buckets'].includes(resource.value)?{credentials:credentials.value}:{})};if(creating.value)await requestClient.post(`/catalog/${resource.value}`,body);else await requestClient.put(`/catalog/${resource.value}/${encodeURIComponent(selected.value)}`,body);dialog.value=false;ElMessage.success('保存成功');await load();await loadOptions();}finally{saving.value=false;}}
+function edit(row?:Row){creating.value=!row;selected.value=row?key(row):'';form.value=Object.fromEntries(Object.keys(defaults[resource.value]||{}).map(k=>[k,row?row[k]:defaults[resource.value]![k]]));form.value.s3Region=String(row?.s3_region||'');credentials.value={};s3Result.value={};dialog.value=true;}
+const s3Checking=ref(false); const s3Result=ref<Row>({});
+async function checkS3(){
+ if(s3Checking.value)return;
+ s3Checking.value=true;s3Result.value={};
+ try{
+  const result=await requestClient.post<Row>('/storage/buckets/s3-check',{code:selected.value,provider:form.value.provider,bucket:form.value.bucket,region:form.value.region,credentials:credentials.value});
+  s3Result.value=result||{ok:false,error:'检测无返回'};
+  if(result?.ok){ElMessage.success(`S3 直传可用：区域 ${result.region}${result.saved?'，已写入配置':''}`);await load();}
+  else ElMessage.error(String(result?.error||'检测未通过'));
+ }catch(e){s3Result.value={ok:false,error:e instanceof Error?e.message:'检测失败'};}
+ finally{s3Checking.value=false;}
+}
+async function save(){saving.value=true;try{const {s3Region:s3Hint,...rest}=form.value;void s3Hint;const body={...rest,...(['providers','buckets'].includes(resource.value)?{credentials:credentials.value}:{})};const result=creating.value?await requestClient.post<Row>(`/catalog/${resource.value}`,body):await requestClient.put<Row>(`/catalog/${resource.value}/${encodeURIComponent(selected.value)}`,body);dialog.value=false;const s3=result?.s3;if(resource.value==='buckets'&&s3){ElMessage[s3.ok?'success':'warning'](s3.ok?`保存成功，S3 直传可用：区域 ${s3.region}`:`保存成功，但 S3 直传未通过：${s3.error}`);}else{ElMessage.success('保存成功');}await load();await loadOptions();}finally{saving.value=false;}}
 async function toggle(row:Row){const id=key(row);if(switching.value.has(id))return;switching.value.add(id);try{await requestClient.put(`/catalog/${resource.value}/${encodeURIComponent(id)}`,{enabled:Number(row.enabled)===1?0:1});await load();}finally{switching.value.delete(id);}}
 async function view(row:Row){detail.value=await requestClient.get<Row>(`/catalog/${resource.value}/${encodeURIComponent(key(row))}`);viewing.value=true;}
 const clearingUploads=ref(false);
@@ -237,7 +251,7 @@ watch(resource,()=>{page.value=1;keyword.value='';enabled.value=undefined;provid
    <audio v-if="audioUrl" :key="audioUrl" :src="audioUrl" controls autoplay @error="ElMessage.error('音频加载失败，请检查文件或存储桶访问状态')" class="mb-4" />
    <ElTable ref="tableRef" v-loading="busy" :data="rows" empty-text="暂无记录" @selection-change="onSelectionChange"><ElTableColumn v-if="resource==='uploads'" type="selection" width="48" fixed="left" /><ElTableColumn v-if="resource==='uploads'" label="ID" width="130" fixed="left"><template #default="{row}"><CopyValue :value="row.id" label="复制记录ID"><span :title="String(row.id)">{{ String(row.id||'').slice(0,8) }}…</span></CopyValue></template></ElTableColumn><ElTableColumn v-if="resource==='uploads'" label="功能" width="110"><template #default="{row}"><span>{{featureOf(row)}}</span></template></ElTableColumn><ElTableColumn v-if="resource==='uploads'" label="预览" width="90"><template #default="{row}"><MediaFilePreview v-if="['image','video','audio'].includes(row.media_type)" :file="row" compact @error="failedUploads.add(String(row.id))" @loaded="failedUploads.delete(String(row.id))"/><ElButton v-else-if="/\.(md|txt)$/i.test(String(row.object_key||''))" link type="primary" :disabled="!row.object_url" @click="openDocument(row)">查看文档</ElButton><span v-else>—</span></template></ElTableColumn>
     <ElTableColumn v-for="column in columns" :key="column" :label="labels[column]" :min-width="columnMinWidth(column)">
-     <template #header><span>{{ labels[column] }}</span><ElTooltip v-if="resource==='buckets'&&column==='region'" :content="qiniuRegionTip" placement="top" popper-class="qiniu-hint-tooltip"><span class="hint-icon">?</span></ElTooltip><ElTooltip v-else-if="resource==='buckets'&&column==='upload_url'" :content="qiniuUploadTip" placement="top" popper-class="qiniu-hint-tooltip"><span class="hint-icon">?</span></ElTooltip></template>
+     <template #header><span>{{ labels[column] }}</span><ElTooltip v-if="resource==='buckets'&&column==='region'" :content="qiniuRegionTip" placement="top" popper-class="qiniu-hint-tooltip"><span class="hint-icon">?</span></ElTooltip><ElTooltip v-else-if="resource==='buckets'&&column==='upload_url'" :content="qiniuUploadTip" placement="top" popper-class="qiniu-hint-tooltip"><span class="hint-icon">?</span></ElTooltip><ElTooltip v-else-if="resource==='buckets'&&column==='s3_region'" :content="qiniuS3Tip" placement="top" popper-class="qiniu-hint-tooltip"><span class="hint-icon">?</span></ElTooltip></template>
      <template #default="{row}">
      <ElSwitch v-if="column==='enabled'" :model-value="Number(row.enabled)" :active-value="1" :inactive-value="0" :disabled="!canEdit" :loading="switching.has(key(row))" @change="toggle(row)" />
      <ElTooltip v-else-if="resource==='categories'&&column==='name'&&access.accessCodes.includes('tts-relations:read')" content="查看音色" placement="right" :show-after="150"><ElButton class="category-entry" type="primary" plain :aria-label="`查看${row.name}分类下的音色`" @click="openCategory(row)"><span class="category-entry-name">{{ row.name }}</span><span class="category-entry-hint" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14v-3a9 9 0 0 1 18 0v3"/><rect x="3" y="12" width="4" height="9" rx="2"/><rect x="17" y="12" width="4" height="9" rx="2"/></svg></span></ElButton></ElTooltip>
@@ -327,6 +341,16 @@ watch(resource,()=>{page.value=1;keyword.value='';enabled.value=undefined;provid
      </ElFormItem>
      <ElFormItem label="私有桶"><ElSwitch v-model="form.is_private" :active-value="1" :inactive-value="0"/></ElFormItem>
      <ElFormItem label="默认桶"><ElSwitch v-model="form.is_default" :active-value="1" :inactive-value="0"/><span class="ml-2">保存后取消其他桶的默认状态</span></ElFormItem>
+     <ElFormItem>
+      <template #label>S3 直传 <ElTooltip :content="qiniuS3Tip" placement="top" popper-class="qiniu-hint-tooltip"><span class="hint-icon">?</span></ElTooltip></template>
+      <div class="flex flex-wrap items-center gap-2.5">
+       <ElButton :loading="s3Checking" @click="checkS3">检测 S3 直传</ElButton>
+       <span v-if="s3Result.ok" style="color:var(--el-color-success)">可用 · 区域 {{ s3Result.region }}{{ s3Result.saved ? ' · 已写入配置' : '' }}</span>
+       <span v-else-if="s3Result.error" style="color:var(--el-color-danger)">{{ s3Result.error }}</span>
+       <span v-else-if="form.s3Region" style="color:var(--el-color-success)">已配置 · 区域 {{ form.s3Region }}</span>
+       <span v-else style="color:var(--el-text-color-secondary)">保存时自动检测并写入；也可点此手动复检</span>
+      </div>
+     </ElFormItem>
     </template>
     <template v-if="['providers','buckets'].includes(resource)">
      <ElAlert title="凭据不会回显；留空保持原值。新增或启用前需填写完整凭据。" type="info" :closable="false" class="mb-4"/>
