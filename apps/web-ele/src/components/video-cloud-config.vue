@@ -57,6 +57,7 @@ type LocalValues = {
   videoWatermarkEngine: 'lama' | 'opencv' | 'sttn' | 'propainter';
   videoSttnClip: number;
   videoPropainterClip: number;
+  videoPropainterDilation: number;
 };
 type Status = Profile & {
   local_values?: LocalValues;
@@ -125,6 +126,7 @@ const localValues = reactive<LocalValues>({
   videoWatermarkEngine: 'lama',
   videoSttnClip: 30,
   videoPropainterClip: 80,
+  videoPropainterDilation: 4,
 });
 const drafts = reactive<Partial<Record<Provider, Form>>>({});
 const status = ref<Status>();
@@ -563,6 +565,21 @@ onDeactivated(() => {
             <p class="help">
               20到120的整数，默认80。一次送入模型推理的帧数，越大修复越连贯但越慢、显存占用越高；仅影响新提交的
               ProPainter 任务，节点端生效。
+            </p>
+          </ElFormItem>
+          <ElFormItem
+            v-if="localValues[task.engine] === 'propainter'"
+            label="ProPainter mask 膨胀（像素）"
+          >
+            <ElInputNumber
+              v-model="localValues.videoPropainterDilation"
+              :min="0"
+              :max="12"
+              :precision="0"
+            />
+            <p class="help">
+              0到12的整数，默认4。遮挡区域向外扩张的像素数，调小可减少修复区域的噪点纹理；0
+              表示不膨胀。仅影响新提交的 ProPainter 任务，节点端生效。
             </p>
           </ElFormItem>
           <template v-if="environment">
