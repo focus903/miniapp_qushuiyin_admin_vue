@@ -5,12 +5,15 @@ import { ElAlert, ElButton } from 'element-plus';
 
 import { requestClient } from '#/api/request';
 import CopyValue from '#/components/copy-value.vue';
+import HevcVideo from '#/components/hevc-video.vue';
 const props = defineProps<{ resource: string; recordId: number | string }>();
 type Preview = {
   input_url: string;
   result_url: string;
   input_path?: string;
   result_path?: string;
+  input_codec?: string;
+  result_codec?: string;
   input_reason: string;
   result_reason: string;
   media_expires: number;
@@ -120,14 +123,14 @@ onBeforeUnmount(() => {
     >
       <section>
         <h4>原视频</h4>
-        <video
+        <p v-if="value.input_codec" class="codec-line">
+          编码格式：{{ value.input_codec }}
+        </p>
+        <HevcVideo
           v-if="value.input_url && !inputFailed"
           :src="value.input_url"
-          controls
-          playsinline
-          preload="metadata"
-          @error="inputFailed = true"
-        ></video>
+          :codec="value.input_codec || ''"
+        />
         <p v-else>
           {{
             inputFailed
@@ -159,14 +162,14 @@ onBeforeUnmount(() => {
       </section>
       <section v-if="hasResult">
         <h4>处理结果</h4>
-        <video
+        <p v-if="value.result_codec" class="codec-line">
+          编码格式：{{ value.result_codec }}
+        </p>
+        <HevcVideo
           v-if="value.result_url && !resultFailed"
           :src="value.result_url"
-          controls
-          playsinline
-          preload="metadata"
-          @error="resultFailed = true"
-        ></video>
+          :codec="value.result_codec || ''"
+        />
         <p v-else>
           {{ resultFailed ? '播放失败，请重新加载预览' : value.result_reason }}
         </p>
@@ -217,6 +220,16 @@ onBeforeUnmount(() => {
 .video-grid h4 {
   margin-bottom: 8px;
   font-weight: 600;
+}
+
+.codec-line {
+  margin: -2px 0 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.video-grid :deep(.hevc-video) {
+  width: 100%;
 }
 
 .video-grid video {

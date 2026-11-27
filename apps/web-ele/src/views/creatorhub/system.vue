@@ -32,6 +32,7 @@ import {
   ElTabPane,
   ElTabs,
   ElTag,
+  ElTooltip,
 } from 'element-plus';
 
 import { requestClient } from '#/api/request';
@@ -455,7 +456,52 @@ watch(
                         size="small"
                         type="success"
                         effect="plain"
-                        >公众号图文</ElTag></span>
+                        >公众号图文</ElTag><ElTooltip
+                        v-if="field.key === 'wxTaskMessageState'"
+                        placement="top"
+                        :show-after="120"
+                        popper-class="subscribe-env-tooltip"
+                      >
+                        <span class="hint-icon" aria-label="小程序环境说明">?</span>
+                        <template #content>
+                          <div
+                            style="
+                              max-width: 340px;
+                              line-height: 1.7;
+                              white-space: normal;
+                            "
+                          >
+                            <p style="margin: 0 0 6px; font-weight: 600">
+                              只管「点开通知跳到哪个版本」，不影响通知能否发送
+                            </p>
+                            <p style="margin: 0 0 6px">
+                              ·
+                              <b>关闭「固定使用此版本」（默认）</b
+                              >：按用户当时授权并提交任务的版本跳转——在开发版授权就跳开发版，体验版跳体验版，正式版跳正式版。
+                            </p>
+                            <p style="margin: 0 0 6px">
+                              ·
+                              <b>开启「固定使用此版本」</b
+                              >：所有通知统一跳到上面选中的版本，忽略用户授权时的版本。
+                            </p>
+                            <p style="margin: 0 0 6px">
+                              ·
+                              <b>关闭时下拉不是无效的</b
+                              >：关闭后按用户授权版本跳转，这个下拉作为<b>兜底版本</b>，用于旧任务或任务没记录版本的通知。
+                            </p>
+                            <p style="margin: 0 0 6px">
+                              ·
+                              <b>注意</b
+                              >：开发版／体验版只有开发者、体验成员能打开，普通用户点了会提示无法打开。正式上线前请选「正式版」，否则老任务的通知会把用户带到打不开的页面。
+                            </p>
+                            <p style="margin: 0">
+                              ·
+                              <b>生效范围</b
+                              >：只影响尚未发送的通知，已发送的不变。
+                            </p>
+                          </div>
+                        </template>
+                      </ElTooltip></span>
                     <span
                       v-if="field.key === 'wxTaskMessageState'"
                       class="ml-3 inline-flex items-center gap-2 text-sm"
@@ -503,11 +549,22 @@ watch(
                   <template
                     v-if="
                       field.key === 'maintenanceMode' ||
-                      field.key === 'showHomeNotice'
+                      field.key === 'showHomeNotice' ||
+                      field.key === 'wxTaskMessageState'
                     "
                     #extra
                   >
-                    <div class="config-inline-notice">
+                    <div
+                      v-if="field.key === 'wxTaskMessageState'"
+                      class="config-role-hint"
+                    >
+                      {{
+                        config.wxTaskMessageStateFixed === true
+                          ? '当前：所有通知统一跳到上面选中的版本。'
+                          : '当前：跟随用户授权版本；上面选中的版本只作兜底（旧任务或任务没记录版本时使用），所以关闭时仍需选择。'
+                      }}
+                    </div>
+                    <div v-else class="config-inline-notice">
                       <ElInput
                         :model-value="
                           String(
@@ -1107,5 +1164,28 @@ watch(
 
 .notes-config-grid > :deep(.notes-learning-switch .el-form-item__label) {
   font-size: 13px;
+}
+
+.hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 4px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--el-color-info);
+  cursor: help;
+  vertical-align: middle;
+  background: var(--el-color-info-light-7);
+  border-radius: 50%;
+}
+
+.config-role-hint {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-color-primary);
 }
 </style>

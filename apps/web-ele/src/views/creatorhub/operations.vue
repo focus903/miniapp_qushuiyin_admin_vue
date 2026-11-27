@@ -601,6 +601,7 @@ const labels: Record<string, string> = {
   openid: '用户 OpenId',
   development: '开发账号',
   status: '状态',
+  process_type: '处理类型',
   deleted_at: '删除时间',
   deleted_by: '删除管理员ID',
   scene: '场景',
@@ -716,6 +717,7 @@ const columnMap: Record<string, string[]> = {
     'openid',
     'nickname',
     'status',
+    'process_type',
     'progress',
     'duration',
     'error',
@@ -725,6 +727,7 @@ const columnMap: Record<string, string[]> = {
     'openid',
     'nickname',
     'status',
+    'process_type',
     'progress',
     'duration',
     'error',
@@ -798,6 +801,21 @@ const columns = computed(() => {
   return columnMap[kind.value] || [];
 });
 const task = computed(() => ['subtitle', 'watermark'].includes(kind.value));
+const taskColumnWidths: Record<string, number> = {
+  nickname: 72,
+  status: 72,
+  process_type: 92,
+  progress: 76,
+  duration: 76,
+  openid: 180,
+  error: 180,
+  created: 140,
+};
+function columnWidth(key: string): number | undefined {
+  if (kind.value === 'parses') return parseColumnWidths[key];
+  if (task.value) return taskColumnWidths[key];
+  return undefined;
+}
 const businessDeletion = useBusinessRecordDeletion(
   () => kind.value,
   async () => {
@@ -2326,15 +2344,15 @@ watch(
           :key="key"
           :label="labels[key]"
           :width="
-            kind === 'parses' && parseColumnWidths[key]
-              ? parseColumnWidths[key]
+            columnWidth(key)
+              ? columnWidth(key)
               : key === 'ledger_user_info'
                 ? 340
                 : undefined
           "
           :min-width="
-            kind === 'parses' && parseColumnWidths[key]
-              ? parseColumnWidths[key]
+            columnWidth(key)
+              ? columnWidth(key)
               : ['share_text', 'source_url'].includes(key)
                 ? 360
                 : key === 'ledger_user_info'
@@ -2502,7 +2520,10 @@ watch(
               {{ show(key, s.row[key], s.row) }}
 </ElTag><ElTag
               v-else-if="
-                key === 'output_mode' || key === 'status' || key === 'is_valid'
+                key === 'output_mode' ||
+                key === 'status' ||
+                key === 'process_type' ||
+                key === 'is_valid'
               "
               :type="
                 kind === 'parses' && key === 'status'
