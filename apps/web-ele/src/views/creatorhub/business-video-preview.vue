@@ -6,6 +6,7 @@ import { ElAlert, ElButton } from 'element-plus';
 import { requestClient } from '#/api/request';
 import CopyValue from '#/components/copy-value.vue';
 import HevcVideo from '#/components/hevc-video.vue';
+import { sniffMp4Codec } from '#/utils/mp4-codec';
 const props = defineProps<{ resource: string; recordId: number | string }>();
 type Preview = {
   input_url: string;
@@ -26,6 +27,8 @@ const loadError = ref('');
 const inputFailed = ref(false);
 const resultFailed = ref(false);
 const value = ref<null | Preview>(null);
+const inputCodec = ref('');
+const resultCodec = ref('');
 const hasResult = computed(() =>
   ['subtitle', 'watermark'].includes(props.resource),
 );
@@ -50,9 +53,36 @@ function fullUrl(url: string) {
     return url;
   }
 }
+function knownCodec(label?: string) {
+  return Boolean(label && /(HEVC|H\.264|H\.265|AVC|AV1|VP8|VP9|MPEG-\d)/i.test(label));
+}
+
+async function sniffCodecs(data: Preview, current: number) {
+  inputCodec.value = data.input_codec || '';
+  resultCodec.value = data.result_codec || '';
+  const jobs: Promise<void>[] = [];
+  if (!knownCodec(data.input_codec) && data.input_cloud_url) {
+    jobs.push(
+      sniffMp4Codec(data.input_cloud_url).then((label) => {
+        if (current === version && active && label) inputCodec.value = label;
+      }),
+    );
+  }
+  if (!knownCodec(data.result_codec) && data.result_cloud_url) {
+    jobs.push(
+      sniffMp4Codec(data.result_cloud_url).then((label) => {
+        if (current === version && active && label) resultCodec.value = label;
+      }),
+    );
+  }
+  await Promise.all(jobs);
+}
+
 async function load() {
   const current = ++version;
   value.value = null;
+  inputCodec.value = '';
+  resultCodec.value = '';
   loadError.value = '';
   busy.value = true;
   inputFailed.value = false;
@@ -70,6 +100,7 @@ async function load() {
         input_path: data.input_path || '',
         result_path: data.result_path || '',
       };
+      void sniffCodecs(data, current);
   } catch (error) {
     if (current === version && active)
       loadError.value =
@@ -123,13 +154,13 @@ onBeforeUnmount(() => {
     >
       <section>
         <h4>原视频</h4>
-        <p v-if="value.input_codec" class="codec-line">
-          编码格式：{{ value.input_codec }}
+        <p v-if="inputCodec" class="codec-line">
+          编码格式：{{ inputCodec }}
         </p>
         <HevcVideo
           v-if="value.input_url && !inputFailed"
           :src="value.input_url"
-          :codec="value.input_codec || ''"
+          :codec="inputCodec"
         />
         <p v-else>
           {{
@@ -162,13 +193,13 @@ onBeforeUnmount(() => {
       </section>
       <section v-if="hasResult">
         <h4>处理结果</h4>
-        <p v-if="value.result_codec" class="codec-line">
-          编码格式：{{ value.result_codec }}
+        <p v-if="resultCodec" class="codec-line">
+          编码格式：{{ resultCodec }}
         </p>
         <HevcVideo
           v-if="value.result_url && !resultFailed"
           :src="value.result_url"
-          :codec="value.result_codec || ''"
+          :codec="resultCodec"
         />
         <p v-else>
           {{ resultFailed ? '播放失败，请重新加载预览' : value.result_reason }}

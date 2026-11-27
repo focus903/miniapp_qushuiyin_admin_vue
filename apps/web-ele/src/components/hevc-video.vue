@@ -29,6 +29,7 @@ const props = withDefaults(
 const SDK_BASE = `${import.meta.env.BASE_URL || '/'}h265webjs/`;
 const hostId = `hevc-player-${Math.random().toString(36).slice(2, 10)}`;
 const hostRef = ref<HTMLDivElement | null>(null);
+const nativeRef = ref<HTMLVideoElement | null>(null);
 const useSdk = ref(false);
 const sdkReady = ref(false);
 const sdkError = ref('');
@@ -37,6 +38,9 @@ const mounted = ref(false);
 let player: H265Player | null = null;
 let runVersion = 0;
 let sdkPromise: Promise<void> | null = null;
+let nativeTimer: number | undefined;
+let frameHandle: number | undefined;
+let frameSeen = false;
 
 const isHevc = () => /hevc|h\.265|hvc1|hev1/i.test(props.codec || '');
 
@@ -71,6 +75,7 @@ function loadSdk() {
 }
 
 function releasePlayer() {
+  clearNativeWatchdog();
   runVersion++;
   const current = player;
   player = null;
@@ -132,7 +137,45 @@ async function setupSdk() {
   }
 }
 
+function clearNativeWatchdog() {
+  if (nativeTimer !== undefined) {
+    window.clearTimeout(nativeTimer);
+    nativeTimer = undefined;
+  }
+  const video = nativeRef.value as (HTMLVideoElement & {
+    cancelVideoFrameCallback?: (handle: number) => void;
+  }) | null;
+  if (frameHandle !== undefined && video?.cancelVideoFrameCallback) {
+    try {
+      video.cancelVideoFrameCallback(frameHandle);
+    } catch {
+      // 浏览器可能已回收该视频元素。
+    }
+  }
+  frameHandle = undefined;
+}
+
+function onNativePlaying(event: Event) {
+  if (useSdk.value || !isHevc()) return;
+  clearNativeWatchdog();
+  frameSeen = false;
+  const video = event.target as HTMLVideoElement & {
+    requestVideoFrameCallback?: (callback: () => void) => number;
+    cancelVideoFrameCallback?: (handle: number) => void;
+  };
+  if (!video.requestVideoFrameCallback) return;
+  frameHandle = video.requestVideoFrameCallback(() => {
+    frameSeen = true;
+    clearNativeWatchdog();
+  });
+  // 浏览器声明支持 HEVC 但实际解不出画面时，video 会静音黑屏且不触发 error。
+  nativeTimer = window.setTimeout(() => {
+    if (!frameSeen && !useSdk.value && isHevc()) onNativeError();
+  }, 3000);
+}
+
 function onNativeError() {
+  clearNativeWatchdog();
   if (useSdk.value) return;
   releasePlayer();
   useSdk.value = true;
@@ -176,12 +219,18 @@ onBeforeUnmount(() => {
   <div class="hevc-video">
     <video
       v-if="!useSdk && src"
+      ref="nativeRef"
       :src="src"
       controls
       playsinline
       preload="metadata"
+      @playing="onNativePlaying"
       @error="onNativeError"
     ></video>
+    <div v-if="!useSdk && isHevc() && src" class="hevc-toolbar">
+      <span>若画面黑屏，可切换软件解码</span>
+      <ElButton link size="small" @click="onNativeError">切换软件解码</ElButton>
+    </div>
     <div v-else-if="useSdk" class="hevc-sdk">
       <div :id="hostId" ref="hostRef" class="hevc-sdk-host"></div>
       <div class="hevc-toolbar">

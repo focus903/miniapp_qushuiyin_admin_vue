@@ -19,7 +19,6 @@ const resource=computed(()=>String(route.meta.resource || 'providers'));
 const storage=computed(()=>['buckets','uploads'].includes(resource.value));
 const canEdit=computed(()=>access.accessCodes.includes(`${storage.value?'storage':'tts'}-${resource.value}:update`));
 const readonly=computed(()=>['uploads','samples'].includes(resource.value));
-const failedUploads=ref(new Set<string>());const deletingUploads=ref(new Set<string>());
 const tableRef=ref<any>(null);const selectedUploads=ref<Row[]>([]);const purgingUploads=ref(new Set<string>());
 const rows=ref<Row[]>([]); const total=ref(0); const page=ref(1); const busy=ref(false); const error=ref('');
 const keyword=ref(''); const enabled=ref<number>(); const providerId=ref<number>(); const categoryId=ref<number>(); const sex=ref(''); const status=ref(''); const feature=ref('');
@@ -152,7 +151,7 @@ function display(row:Row,k:string){
 let generation=0;
 async function load(){
  const version=++generation;busy.value=true;error.value='';
- try{const result=await requestClient.get<Result>(`/catalog/${resource.value}`,{params:{page:page.value,page_size:20,keyword:keyword.value,enabled:enabled.value,provider_id:providerId.value,category_id:categoryId.value,sex:sex.value,status:status.value,feature:feature.value}});if(version===generation){failedUploads.value.clear();rows.value=result.items;total.value=result.total;}}
+ try{const result=await requestClient.get<Result>(`/catalog/${resource.value}`,{params:{page:page.value,page_size:20,keyword:keyword.value,enabled:enabled.value,provider_id:providerId.value,category_id:categoryId.value,sex:sex.value,status:status.value,feature:feature.value}});if(version===generation){rows.value=result.items;total.value=result.total;}}
  catch(e){if(version===generation)error.value=e instanceof Error?e.message:'加载失败，请重试';}finally{if(version===generation)busy.value=false;}
 }
 async function options(name:string){return requestClient.get<Row[]>(`/catalog/options/${name}`);}
@@ -199,12 +198,6 @@ async function clearMissingUploads(){
  }catch{ElMessage.warning(`清理中断，已确认清除 ${deleted} 条；可重新执行，剩余记录会再次检查`);}
  finally{clearingUploads.value=false;if(resource.value==='uploads'){page.value=1;await load();}}
 }
-async function deleteUpload(row:Row){
- const id=String(row.id);if(deletingUploads.value.has(id))return;
- try{await ElMessageBox.confirm('后台将检查文件是否存在，仅在确认不存在后删除上传记录；文件存在或检查失败时保留记录。是否继续？','删除上传记录',{type:'warning',confirmButtonText:'删除记录',cancelButtonText:'取消'});}catch{return;}
- deletingUploads.value.add(id);
- try{await requestClient.delete(`/catalog/uploads/${encodeURIComponent(id)}`);ElMessage.success('上传记录已删除');if(rows.value.length===1&&page.value>1)page.value--;await load();}finally{deletingUploads.value.delete(id);}
-}
 function onSelectionChange(items:Row[]){selectedUploads.value=items;}
 async function purgeIds(ids:string[]){
  if(!ids.length||ids.some(id=>purgingUploads.value.has(id)))return;
@@ -249,7 +242,7 @@ watch(resource,()=>{page.value=1;keyword.value='';enabled.value=undefined;provid
     <ElButton :loading="busy" @click="search">查询</ElButton><ElButton v-if="resource==='uploads'&&access.accessCodes.includes('storage-uploads:delete')" type="danger" :disabled="!selectedUploads.length" :loading="selectedUploads.some(row=>purgingUploads.has(String(row.id)))" @click="purgeSelected">永久删除所选（含云端文件）</ElButton><ElButton v-if="resource==='uploads'&&access.accessCodes.includes('storage-uploads:delete')" type="danger" plain :loading="clearingUploads" @click="clearMissingUploads">一键清除无效文件</ElButton><ElButton v-if="canEdit&&!readonly" type="primary" @click="edit()">新增</ElButton><ElButton v-if="resource==='buckets'" @click="guideTab='cloud';uploadGuideOpen=true">云存储上传说明</ElButton><ElButton v-if="resource==='buckets'" @click="guideTab='local';uploadGuideOpen=true">本地文件存放说明</ElButton>
    </div>
    <audio v-if="audioUrl" :key="audioUrl" :src="audioUrl" controls autoplay @error="ElMessage.error('音频加载失败，请检查文件或存储桶访问状态')" class="mb-4" />
-   <ElTable ref="tableRef" v-loading="busy" :data="rows" empty-text="暂无记录" @selection-change="onSelectionChange"><ElTableColumn v-if="resource==='uploads'" type="selection" width="48" fixed="left" /><ElTableColumn v-if="resource==='uploads'" label="ID" width="130" fixed="left"><template #default="{row}"><CopyValue :value="row.id" label="复制记录ID"><span :title="String(row.id)">{{ String(row.id||'').slice(0,8) }}…</span></CopyValue></template></ElTableColumn><ElTableColumn v-if="resource==='uploads'" label="功能" width="110"><template #default="{row}"><span>{{featureOf(row)}}</span></template></ElTableColumn><ElTableColumn v-if="resource==='uploads'" label="预览" width="90"><template #default="{row}"><MediaFilePreview v-if="['image','video','audio'].includes(row.media_type)" :file="row" compact @error="failedUploads.add(String(row.id))" @loaded="failedUploads.delete(String(row.id))"/><ElButton v-else-if="/\.(md|txt)$/i.test(String(row.object_key||''))" link type="primary" :disabled="!row.object_url" @click="openDocument(row)">查看文档</ElButton><span v-else>—</span></template></ElTableColumn>
+   <ElTable ref="tableRef" v-loading="busy" :data="rows" empty-text="暂无记录" @selection-change="onSelectionChange"><ElTableColumn v-if="resource==='uploads'" type="selection" width="48" fixed="left" /><ElTableColumn v-if="resource==='uploads'" label="ID" width="160" fixed="left"><template #default="{row}"><span class="upload-id" :title="String(row.id)">{{ String(row.id||'').slice(0,8) }}…</span><CopyValue :value="row.id" label="复制记录ID" icon-only /></template></ElTableColumn><ElTableColumn v-if="resource==='uploads'" label="功能" width="110"><template #default="{row}"><span>{{featureOf(row)}}</span></template></ElTableColumn><ElTableColumn v-if="resource==='uploads'" label="预览" width="90"><template #default="{row}"><MediaFilePreview v-if="['image','video','audio'].includes(row.media_type)" :file="row" compact /><ElButton v-else-if="/\.(md|txt)$/i.test(String(row.object_key||''))" link type="primary" :disabled="!row.object_url" @click="openDocument(row)">查看文档</ElButton><span v-else>—</span></template></ElTableColumn>
     <ElTableColumn v-for="column in columns" :key="column" :label="labels[column]" :min-width="columnMinWidth(column)">
      <template #header><span>{{ labels[column] }}</span><ElTooltip v-if="resource==='buckets'&&column==='region'" :content="qiniuRegionTip" placement="top" popper-class="qiniu-hint-tooltip"><span class="hint-icon">?</span></ElTooltip><ElTooltip v-else-if="resource==='buckets'&&column==='upload_url'" :content="qiniuUploadTip" placement="top" popper-class="qiniu-hint-tooltip"><span class="hint-icon">?</span></ElTooltip><ElTooltip v-else-if="resource==='buckets'&&column==='s3_region'" :content="qiniuS3Tip" placement="top" popper-class="qiniu-hint-tooltip"><span class="hint-icon">?</span></ElTooltip></template>
      <template #default="{row}">
@@ -258,7 +251,16 @@ watch(resource,()=>{page.value=1;keyword.value='';enabled.value=undefined;provid
      <CopyValue v-else-if="resource==='buckets'&&column==='upload_url'" :value="row.upload_endpoint||row.upload_url" :label="'复制'+labels[column]"><span>{{ row.upload_endpoint||row.upload_url||'—' }}<small class="upload-source">{{ uploadSourceLabel(row.upload_endpoint_source) }}</small></span></CopyValue>
      <CopyValue v-else-if="['audio_url','object_key','object_url','domain','upload_url'].includes(column)" :value="row[column]" :label="'复制'+labels[column]" /><span v-else style="white-space:pre-wrap;overflow-wrap:anywhere">{{ display(row,column) }}</span>
     </template></ElTableColumn>
-    <ElTableColumn label="操作" :width="resource==='uploads'?220:resource==='buckets'?130:250" fixed="right"><template #default="{row}"><CopyValue v-if="resource==='uploads'&&row.object_url" :value="row.object_url" label="复制链接" icon-only /><ElButton v-if="resource==='samples'" link :loading="previewing.has(key(row))" @click="playSample(row)">试听</ElButton><ElButton v-if="resource==='uploads'&&access.accessCodes.includes('storage-uploads:delete')&&(failedUploads.has(String(row.id))||!row.object_url)" link type="danger" :loading="deletingUploads.has(String(row.id))" @click="deleteUpload(row)">删除记录</ElButton><ElButton v-if="resource==='uploads'&&access.accessCodes.includes('storage-uploads:delete')" link type="danger" :loading="purgingUploads.has(String(row.id))" @click="purgeOne(row)">永久删除</ElButton><ElButton link @click="view(row)">详情</ElButton><ElButton v-if="canEdit&&!readonly" link type="primary" @click="edit(row)">编辑</ElButton><ElButton v-if="access.accessCodes.includes('tts-voices:preview')&&resource==='voices'" link :loading="previewing.has(String(row.id))" @click="preview(row)">生成试听</ElButton></template></ElTableColumn>
+    <ElTableColumn label="操作" :width="resource==='uploads'?160:resource==='buckets'?130:250" fixed="right"><template #default="{row}">
+     <CopyValue v-if="resource==='uploads'" :value="row.object_url || row.object_key" :label="row.object_url ? '复制链接' : '复制文件路径'" icon-only />
+     <ElButton v-if="resource==='samples'" link :loading="previewing.has(key(row))" @click="playSample(row)">试听</ElButton>
+     <ElTooltip v-if="resource==='uploads'&&access.accessCodes.includes('storage-uploads:delete')" content="永久删除（含云端文件）" placement="top">
+      <ElButton link type="danger" :loading="purgingUploads.has(String(row.id))" :aria-label="`永久删除 ${row.id}`" @click="purgeOne(row)">
+       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M9 7v13h6V7M6 7l1 13h10l1-13"/></svg>
+      </ElButton>
+     </ElTooltip>
+     <ElButton link @click="view(row)">详情</ElButton><ElButton v-if="canEdit&&!readonly" link type="primary" @click="edit(row)">编辑</ElButton><ElButton v-if="access.accessCodes.includes('tts-voices:preview')&&resource==='voices'" link :loading="previewing.has(String(row.id))" @click="preview(row)">生成试听</ElButton>
+    </template></ElTableColumn>
    </ElTable>
    <ElPagination v-model:current-page="page" :total="total" :page-size="20" layout="total, prev, pager, next, jumper, slot" class="mt-4" @current-change="load" style="justify-content:center;flex-wrap:wrap;row-gap:8px"><ElButton size="small" :disabled="page<=1" @click="page=1;load()">首页</ElButton><ElButton size="small" :disabled="page>=Math.max(1,Math.ceil((total)/(20)))" @click="page=Math.max(1,Math.ceil((total)/(20)));load()">末页</ElButton></ElPagination>
   </ElCard>
@@ -373,5 +375,7 @@ watch(resource,()=>{page.value=1;keyword.value='';enabled.value=undefined;provid
 .doc-body { margin: 0; max-height: 65vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; line-height: 1.6; }
 .hint-icon { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 4px; border-radius: 50%; background: var(--el-color-info-light-7); color: var(--el-color-info); font-size: 11px; line-height: 1; cursor: help; vertical-align: middle; }
 .upload-source { margin-left: 3px; color: var(--el-text-color-secondary); white-space: nowrap; }
+.upload-id { display: inline-block; white-space: nowrap; vertical-align: middle; }
+.upload-id + .copy-value { display: inline-flex; vertical-align: middle; }
 :deep(.qiniu-hint-tooltip) { white-space: pre-line; max-width: 360px; line-height: 1.6; }
 </style>

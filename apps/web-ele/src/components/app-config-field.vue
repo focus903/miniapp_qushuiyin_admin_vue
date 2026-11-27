@@ -158,6 +158,8 @@ function changeTags(value: unknown) {
       <ElInputNumber
         v-else-if="field.control === 'number'"
         :model-value="typeof modelValue === 'number' ? modelValue : undefined"
+        :min="field.min ?? 1"
+        :max="field.max"
         @update:model-value="(value) => emit('update:modelValue', value ?? 0)"
       />
       <ElRadioGroup

@@ -21,6 +21,7 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
+  ElInputNumber,
   ElMessage,
   ElMessageBox,
   ElOption,
@@ -89,7 +90,7 @@ const videoNotesFieldOrder = new Map(
 );
 function videoNotesChildFields(fields: ConfigField[]) {
   return fields
-    .filter((field) => field.key !== 'showVideoNotes')
+    .filter((field) => field.key !== 'showVideoNotes' && !slotKeys.has(field.key))
     .toSorted(
       (a, b) =>
         (videoNotesFieldOrder.get(a.key) ?? videoNotesFieldOrder.size) -
@@ -161,6 +162,29 @@ function videoProcessingSections(group: ConfigSection) {
   return sections.filter((section) => section.fields.length > 0);
 }
 const configLayout = ref<ReturnType<typeof configTabs>>([]);
+// 并发槽位作为对应功能开关的子控件显示；链接与上传文案提取共用同一组字段。
+const slotChildKeys: Record<string, string[]> = {
+  showVideoWatermark: ['videoWatermarkSlots', 'videoWatermarkRejectOnFull'],
+  showSubtitle: ['videoSubtitleSlots', 'videoSubtitleRejectOnFull'],
+  showExtractTextUpload: ['videoTextSlots', 'videoTextRejectOnFull'],
+  showExtractTextLink: ['videoTextSlots', 'videoTextRejectOnFull'],
+  showVideoNotes: ['videoNotesSlots', 'videoNotesRejectOnFull'],
+};
+const slotKeys = new Set(Object.values(slotChildKeys).flat());
+function findConfigField(key: string): ConfigField | undefined {
+  for (const group of configLayout.value) {
+    for (const section of [group, ...group.children]) {
+      const field = section.fields.find((item) => item.key === key);
+      if (field) return field;
+    }
+  }
+  return undefined;
+}
+function slotFieldsFor(key: string): ConfigField[] {
+  return (slotChildKeys[key] || [])
+    .map((item) => findConfigField(item))
+    .filter((field): field is ConfigField => !!field);
+}
 const invalidFields = ref<Record<string, boolean>>({});
 async function load() {
   busy.value = true;
@@ -643,6 +667,59 @@ watch(
                         (value) => (config[field.key] = value)
                       "
                     >
+                      <template #extra>
+                        <div
+                          v-if="slotFieldsFor(field.key).length"
+                          class="slot-children"
+                        >
+                          <div
+                            v-for="childField in slotFieldsFor(field.key)"
+                            :key="`${configGeneration}-slot-${field.key}-${childField.key}`"
+                            class="slot-child-row"
+                          >
+                            <span class="slot-child-head">
+                              {{ childField.label }}
+                              <ElTooltip
+                                placement="top"
+                                :show-after="120"
+                              >
+                                <span
+                                  class="hint-icon"
+                                  :aria-label="`${childField.label}说明`"
+                                  >?</span
+                                >
+                                <template #content>
+                                  <div class="slot-hint-content">
+                                    {{ childField.description }}
+                                  </div>
+                                </template>
+                              </ElTooltip>
+                            </span>
+                            <ElInputNumber
+                              v-if="childField.control === 'number'"
+                              :model-value="
+                                typeof config[childField.key] === 'number'
+                                  ? config[childField.key]
+                                  : undefined
+                              "
+                              :min="childField.min ?? 1"
+                              :max="childField.max"
+                              @update:model-value="
+                                (value) =>
+                                  (config[childField.key] = value ?? 0)
+                              "
+                            />
+                            <ElSwitch
+                              v-else
+                              :model-value="config[childField.key] === true"
+                              @update:model-value="
+                                (value) =>
+                                  (config[childField.key] = Boolean(value))
+                              "
+                            />
+                          </div>
+                        </div>
+                      </template>
                       <template #label>显示视频笔记（总开关）</template>
                     </AppConfigField>
                     <fieldset
@@ -672,8 +749,10 @@ watch(
                   </div>
                   <div v-else class="config-grid">
                     <AppConfigField
-                      v-for="field in child.fields.filter((item) =>
-                        visibleBusinessField(item.key),
+                      v-for="field in child.fields.filter(
+                        (item) =>
+                          visibleBusinessField(item.key) &&
+                          !slotKeys.has(item.key),
                       )"
                       :key="`${configGeneration}-${field.key}`"
                       :field="field"
@@ -685,6 +764,59 @@ watch(
                         (valid) => (invalidFields[field.key] = !valid)
                       "
                     >
+                      <template #extra>
+                        <div
+                          v-if="slotFieldsFor(field.key).length"
+                          class="slot-children"
+                        >
+                          <div
+                            v-for="childField in slotFieldsFor(field.key)"
+                            :key="`${configGeneration}-slot-${field.key}-${childField.key}`"
+                            class="slot-child-row"
+                          >
+                            <span class="slot-child-head">
+                              {{ childField.label }}
+                              <ElTooltip
+                                placement="top"
+                                :show-after="120"
+                              >
+                                <span
+                                  class="hint-icon"
+                                  :aria-label="`${childField.label}说明`"
+                                  >?</span
+                                >
+                                <template #content>
+                                  <div class="slot-hint-content">
+                                    {{ childField.description }}
+                                  </div>
+                                </template>
+                              </ElTooltip>
+                            </span>
+                            <ElInputNumber
+                              v-if="childField.control === 'number'"
+                              :model-value="
+                                typeof config[childField.key] === 'number'
+                                  ? config[childField.key]
+                                  : undefined
+                              "
+                              :min="childField.min ?? 1"
+                              :max="childField.max"
+                              @update:model-value="
+                                (value) =>
+                                  (config[childField.key] = value ?? 0)
+                              "
+                            />
+                            <ElSwitch
+                              v-else
+                              :model-value="config[childField.key] === true"
+                              @update:model-value="
+                                (value) =>
+                                  (config[childField.key] = Boolean(value))
+                              "
+                            />
+                          </div>
+                        </div>
+                      </template>
                       <template #label>
                         <span class="inline-flex items-center gap-2"><IconifyIcon
                             v-if="outputIcons[field.key]"
@@ -1187,5 +1319,36 @@ watch(
   font-size: 12px;
   line-height: 1.5;
   color: var(--el-color-primary);
+}
+
+/* 槽位控件嵌在功能开关卡片内部，作为一张卡片里的子项。 */
+.slot-children {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.slot-child-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.slot-child-head {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+
+.slot-hint-content {
+  max-width: 320px;
+  line-height: 1.7;
+  white-space: normal;
 }
 </style>
