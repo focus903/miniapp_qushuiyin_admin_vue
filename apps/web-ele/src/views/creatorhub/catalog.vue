@@ -143,6 +143,7 @@ function display(row:Row,k:string){
  if(k==='reason'&&String(value)==='direct-ticket')return '直传凭证已签发';
  if(k==='reason'&&String(value).startsWith('client:'))return '直传未完成：'+String(value).slice(7);
  if(k==='reason'&&String(value).startsWith('direct-task:'))return '直传任务已提交';
+ if(k==='reason'&&String(value).startsWith('direct-result:wuhenai:'))return '无痕AI结果已直传';
  if(k==='reason'&&String(value).startsWith('direct-result:'))return '节点结果已直传';
  if(k==='reason'&&/^qiniu_(upload|domain)_http_[1-6][0-9]{2}$/.test(String(value)))return `${String(value).includes('_domain_')?'访问域名':'七牛上传'}返回 HTTP ${String(value).slice(-3)}`;
  if(k==='reason')return ({forced_local:'指定保存本地',unconfigured:'未配置云存储',upload_failed:'云上传失败',cloud_upload_failed:'云上传或校验失败',qiniu_sdk_error:'七牛SDK调用失败',qiniu_upload_failed:'七牛上传失败',qiniu_object_key_mismatch:'云对象路径不一致',qiniu_domain_timeout:'访问域名超时',qiniu_domain_connection_failed:'访问域名连接失败',local_or_input_failed:'文件输入或本地保存失败'} as Row)[value]??(value||'—');
