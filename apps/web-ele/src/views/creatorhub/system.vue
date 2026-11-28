@@ -38,6 +38,7 @@ import {
 
 import { requestClient } from '#/api/request';
 import AppConfigField from '#/components/app-config-field.vue';
+import EffectImageField from '#/components/effect-image-field.vue';
 import DoubaoCookie from '#/components/doubao-cookie.vue';
 import DouyinCookie from '#/components/douyin-cookie.vue';
 import PermissionTree from '#/components/permission-tree.vue';
@@ -164,8 +165,8 @@ function videoProcessingSections(group: ConfigSection) {
 const configLayout = ref<ReturnType<typeof configTabs>>([]);
 // 并发槽位作为对应功能开关的子控件显示；链接与上传文案提取共用同一组字段。
 const slotChildKeys: Record<string, string[]> = {
-  showVideoWatermark: ['videoWatermarkSlots', 'videoWatermarkRejectOnFull'],
-  showSubtitle: ['videoSubtitleSlots', 'videoSubtitleRejectOnFull'],
+  showVideoWatermark: ['videoWatermarkSlots', 'videoWatermarkRejectOnFull', 'videoWatermarkEffectBefore', 'videoWatermarkEffectAfter'],
+  showSubtitle: ['videoSubtitleSlots', 'videoSubtitleRejectOnFull', 'videoSubtitleEffectBefore', 'videoSubtitleEffectAfter'],
   showExtractTextUpload: ['videoTextSlots', 'videoTextRejectOnFull'],
   showExtractTextLink: ['videoTextSlots', 'videoTextRejectOnFull'],
   showVideoNotes: ['videoNotesSlots', 'videoNotesRejectOnFull'],
@@ -184,6 +185,56 @@ function slotFieldsFor(key: string): ConfigField[] {
   return (slotChildKeys[key] || [])
     .map((item) => findConfigField(item))
     .filter((field): field is ConfigField => !!field);
+}
+/** 广告管理：把「广告位 ID + 显示开关」两两配对，每行一组，其余单独成行。 */
+/** 广告类型总表，点击「所有广告说明」弹窗查看。 */
+const AD_GUIDE_ROWS = [
+  { type: '原生模板广告', timing: '自定义位置的横幅，5 种画布、15 种模板', setup: '微信后台新建广告位，代码已接入', status: '已用', tone: 'used' },
+  { type: '激励视频广告', timing: '用户主动看完视频换奖励（积分/次数）', setup: '微信后台新建广告位，代码已接入', status: '已用', tone: 'used' },
+  { type: '支付订单详情页广告', timing: '支付完成进入订单详情页时底部展示', setup: '微信后台一键开启，无需代码', status: '可加', tone: 'available' },
+  { type: '插屏广告', timing: '自定义场景触发时弹出全屏', setup: '微信后台新建广告位，需加代码', status: '不建议', tone: 'warn' },
+  { type: '封面广告', timing: '进入小程序时展示，可跳过或 5 秒自动跳过', setup: '微信后台开启开关，无需代码', status: '不建议', tone: 'warn' },
+  { type: '视频贴片广告', timing: '视频播放前/中/后插入', setup: '微信后台新建广告位，需加代码', status: '不适用', tone: 'muted' },
+];
+const adGuideDialog = ref(false);
+/** 广告字段说明兜底：数据库旧行的 description 可能为空。 */
+const AD_FIELD_HINTS: Record<string, string> = {
+  videoAdId:
+    '微信流量主后台「广告位管理 → 自主接入」创建的原生模板广告位 ID（adunit- 开头，模板建议 20:7 横幅卡片）；由「显示首页广告」开关控制是否展示，可留空。',
+  awardAdId:
+    '微信流量主后台「广告位管理 → 自主接入」创建的激励广告广告位 ID（adunit- 开头）。小程序刷新用户信息后生效；留空则不加载激励广告。',
+  videoNotesAdId:
+    '视频笔记页面底部展示的原生模板广告位 ID（adunit- 开头，模板建议 20:7 横幅卡片）；由「显示视频笔记页广告」开关控制是否展示，可留空。',
+};
+/** 广告类型标签只显示在广告位 ID 标题旁，开关不再重复。 */
+const AD_TYPE_LABELS: Record<string, string> = {
+  videoAdId: '原生模板广告',
+  watermarkAdId: '原生模板广告',
+  subtitleAdId: '原生模板广告',
+  videoNotesAdId: '原生模板广告',
+  awardAdId: '激励视频广告',
+};
+const PAYMENT_AD_HINT =
+  '需在微信后台加：微信公众平台 → 流量主 → 广告管理 → 支付订单详情页广告位设置，开启开关即可。无需小程序代码，也没有广告位 ID；仅对微信支付普通商户模式的交易订单生效。';
+const AD_ROW_PAIRS: [string, string][] = [
+  ['videoAdId', 'showHomeAd'],
+  ['watermarkAdId', 'showWatermarkAd'],
+  ['subtitleAdId', 'showSubtitleAd'],
+  ['videoNotesAdId', 'showVideoNotesAd'],
+];
+function adRows(group: ConfigSection): ConfigField[][] {
+  const byKey = new Map(group.fields.map((field) => [field.key, field]));
+  const rows: ConfigField[][] = [];
+  for (const [idKey, switchKey] of AD_ROW_PAIRS) {
+    const pair = [byKey.get(idKey), byKey.get(switchKey)].filter(
+      (field): field is ConfigField => !!field,
+    );
+    if (pair.length) rows.push(pair);
+    byKey.delete(idKey);
+    byKey.delete(switchKey);
+  }
+  for (const field of byKey.values()) rows.push([field]);
+  return rows;
 }
 const invalidFields = ref<Record<string, boolean>>({});
 async function load() {
@@ -450,6 +501,85 @@ watch(
                   </div>
                 </ElCard>
               </div>
+              <template v-else-if="group.code === 'ads' && group.fields.length">
+                <div class="ad-guide-actions">
+                  <ElButton link type="primary" @click="adGuideDialog = true">
+                    所有广告说明
+                  </ElButton>
+                </div>
+                <div class="ad-config-rows">
+                <div
+                  v-for="(row, rowIndex) in adRows(group)"
+                  :key="`ad-row-${configGeneration}-${rowIndex}`"
+                  class="ad-config-row"
+                  :class="{ 'ad-config-row--single': row.length === 1 }"
+                >
+                  <AppConfigField
+                    v-for="field in row"
+                    :key="`${configGeneration}-${field.key}`"
+                    class="ad-config-field"
+                    :field="field"
+                    :model-value="config[field.key]"
+                    @update:model-value="
+                      (value) => (config[field.key] = value)
+                    "
+                    @validity-change="
+                      (valid) => (invalidFields[field.key] = !valid)
+                    "
+                  >
+                    <template #label>
+                      <span class="inline-flex items-center gap-1">
+                        {{ field.label }}
+                        <span
+                          v-if="AD_TYPE_LABELS[field.key]"
+                          class="ad-type-tag"
+                        >
+                          {{ AD_TYPE_LABELS[field.key] }}
+                        </span>
+                        <ElTooltip
+                          v-if="field.description || AD_FIELD_HINTS[field.key]"
+                          placement="top"
+                          :show-after="120"
+                        >
+                          <span class="hint-icon" aria-label="配置说明">?</span>
+                          <template #content>
+                            <div
+                              style="
+                                max-width: 320px;
+                                line-height: 1.7;
+                                white-space: normal;
+                              "
+                            >
+                              {{ field.description || AD_FIELD_HINTS[field.key] }}
+                            </div>
+                          </template>
+                        </ElTooltip>
+                      </span>
+                    </template>
+                  </AppConfigField>
+                </div>
+                </div>
+                <div class="ad-config-row ad-config-row--single ad-payment-row">
+                  <span class="ad-payment-label">
+                    支付订单详情页广告
+                    <span class="ad-type-tag">支付订单详情页广告</span>
+                    <ElTooltip placement="top" :show-after="120">
+                      <span class="hint-icon" aria-label="配置说明">?</span>
+                      <template #content>
+                        <div
+                          style="
+                            max-width: 320px;
+                            line-height: 1.7;
+                            white-space: normal;
+                          "
+                        >
+                          {{ PAYMENT_AD_HINT }}
+                        </div>
+                      </template>
+                    </ElTooltip>
+                  </span>
+                </div>
+              </template>
               <div v-else-if="group.fields.length" class="config-grid">
                 <AppConfigField
                   v-for="field in group.fields.filter(
@@ -709,6 +839,23 @@ watch(
                                   (config[childField.key] = value ?? 0)
                               "
                             />
+                            <EffectImageField
+                              v-else-if="childField.control === 'input'"
+                              :field="childField"
+                              :model-value="
+                                typeof config[childField.key] === 'string'
+                                  ? config[childField.key]
+                                  : ''
+                              "
+                              @update:model-value="
+                                (value) =>
+                                  (config[childField.key] = value)
+                              "
+                              @validity-change="
+                                (valid) =>
+                                  (invalidFields[childField.key] = !valid)
+                              "
+                            />
                             <ElSwitch
                               v-else
                               :model-value="config[childField.key] === true"
@@ -804,6 +951,23 @@ watch(
                               @update:model-value="
                                 (value) =>
                                   (config[childField.key] = value ?? 0)
+                              "
+                            />
+                            <EffectImageField
+                              v-else-if="childField.control === 'input'"
+                              :field="childField"
+                              :model-value="
+                                typeof config[childField.key] === 'string'
+                                  ? config[childField.key]
+                                  : ''
+                              "
+                              @update:model-value="
+                                (value) =>
+                                  (config[childField.key] = value)
+                              "
+                              @validity-change="
+                                (valid) =>
+                                  (invalidFields[childField.key] = !valid)
                               "
                             />
                             <ElSwitch
@@ -1087,6 +1251,30 @@ watch(
       <DoubaoCookie v-if="doubaoCookieDialog" :can-save="canSave" />
     </ElDialog>
     <ElDialog
+      v-if="isConfig"
+      v-model="adGuideDialog"
+      title="所有广告说明"
+      width="min(900px, 94vw)"
+      top="8vh"
+      destroy-on-close
+    >
+      <ElTable :data="AD_GUIDE_ROWS" border style="width: 100%">
+        <ElTableColumn prop="type" label="广告类型" min-width="140" />
+        <ElTableColumn prop="timing" label="出现时机" min-width="240" />
+        <ElTableColumn prop="setup" label="微信后台操作" min-width="220" />
+        <ElTableColumn label="你项目" width="90">
+          <template #default="{ row }">
+            <span :class="`ad-guide-status ad-guide-status--${row.tone}`">
+              {{ row.status }}
+            </span>
+          </template>
+        </ElTableColumn>
+      </ElTable>
+      <p class="ad-guide-note">
+        「微信后台操作」说明是否需要在微信公众平台后台开启或新建广告位。支付订单详情页广告需在微信后台一键开启，无需小程序代码；仅对微信支付普通商户模式的交易订单生效。
+      </p>
+    </ElDialog>
+    <ElDialog
       v-model="userDialog"
       :title="editingId ? '编辑管理员' : '新增管理员'"
       width="560px"
@@ -1200,6 +1388,70 @@ watch(
   grid-column: auto;
 }
 
+/* 广告管理：每个功能一行（ID + 开关），行间用横线分隔，输入框限宽避免过宽。 */
+.ad-config-rows {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 20px;
+  max-width: 900px;
+}
+
+/* 说明已移到标题旁问号图标，隐藏字段下方重复的描述文字（映射表操作提示保留）。 */
+.ad-config-row :deep(.config-description:not(.config-free-hint)) {
+  display: none;
+}
+
+.ad-config-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px 32px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.ad-config-row:first-child {
+  padding-top: 14px;
+}
+
+.ad-config-row:last-child {
+  border-bottom: none;
+}
+
+/* ID 输入框与开关等宽并排，避免长描述把开关挤到下一行。 */
+.ad-config-field.ad-config-field {
+  flex: 0 1 380px;
+  width: 380px;
+  min-width: 0;
+  max-width: 380px;
+  margin-bottom: 0;
+}
+
+/* 单独成行的字段（激励广告位、看广告免费领取映射表）占满容器宽度。 */
+.ad-config-row--single .ad-config-field.ad-config-field {
+  flex-basis: 100%;
+  width: 100%;
+  max-width: 100%;
+}
+
+.ad-config-field .config-field,
+.ad-config-field .config-description {
+  max-width: 100%;
+  white-space: normal;
+}
+
+@media (max-width: 720px) {
+  .ad-config-row {
+    flex-wrap: wrap;
+  }
+
+  .ad-config-field.ad-config-field {
+    flex: 0 1 100%;
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
 .asr-model-panel {
   padding: 18px 20px;
   margin-bottom: 20px;
@@ -1296,6 +1548,63 @@ watch(
 
 .notes-config-grid > :deep(.notes-learning-switch .el-form-item__label) {
   font-size: 13px;
+}
+
+.ad-type-tag {
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--el-color-primary);
+  white-space: nowrap;
+  background: var(--el-color-primary-light-9);
+  border-radius: 4px;
+}
+
+.ad-payment-row {
+  padding-bottom: 6px;
+  border-bottom: none;
+}
+
+.ad-payment-label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+
+.ad-guide-actions {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.ad-guide-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.ad-guide-status {
+  font-weight: 600;
+}
+
+.ad-guide-status--used {
+  color: var(--el-color-success);
+}
+
+.ad-guide-status--available {
+  color: var(--el-color-warning);
+}
+
+.ad-guide-status--warn {
+  color: var(--el-text-color-regular);
+}
+
+.ad-guide-status--muted {
+  color: var(--el-text-color-placeholder);
 }
 
 .hint-icon {

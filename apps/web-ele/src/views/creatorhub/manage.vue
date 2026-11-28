@@ -22,7 +22,7 @@ const packageOrderOpen=ref(false);
 const detail = ref<Row>();
 const switching = ref(new Set<string>());
 const isSwitch = (key: string) => ['enabled', 'unlimited'].includes(key);
-const fields: Record<string,string> = {weight:'权重',feature:'功能',name:'名称',unit:'计费单位',unit_size:'每单位用量',points:'积分',enabled:'启用状态',code:'英文标识',daily_limit:'每天最多领取次数',price_fen:'价格（元）',wx_product_id:'微信道具 ID',base_points:'基础积分',bonus_points:'赠送积分',days:'有效天数',plan_code:'会员套餐',unlimited:'不限次数',daily_count:'每日免费次数',single_seconds:'单次最长秒数',daily_seconds:'每日总秒数',admin_username:'操作管理员账号',admin_id:'管理员ID',action:'操作',target_label:'操作对象',target_description:'操作说明',target:'原始目标标识',detail:'操作详情',created:'时间'};
+const fields: Record<string,string> = {weight:'权重',feature:'功能',name:'名称',unit:'计费单位',unit_size:'每单位用量',points:'积分',fullscreen_points:'全屏积分',enabled:'启用状态',code:'英文标识',daily_limit:'每天最多领取次数',price_fen:'价格（元）',wx_product_id:'微信道具 ID',base_points:'基础积分',bonus_points:'赠送积分',days:'有效天数',plan_code:'会员套餐',unlimited:'不限次数',daily_count:'每日免费次数',single_seconds:'单次最长秒数',daily_seconds:'每日总秒数',admin_username:'操作管理员账号',admin_id:'管理员ID',action:'操作',target_label:'操作对象',target_description:'操作说明',target:'原始目标标识',detail:'操作详情',created:'时间'};
 const schemas: Record<string,string[]> = {
  'feature-billing':['feature','name','unit','unit_size','points','weight','enabled'],
  'point-rewards':['code','points','daily_limit','weight','enabled'],
@@ -52,7 +52,13 @@ const billingSections = [
  {label:'图片处理', features:['image_repair','image_large','image_compress','image_ocr']},
  {label:'文字配音', features:['tts']},
 ];
-const secondsAllowed = computed(() => ['remove_subtitle','remove_watermark','extract_text_upload'].includes(String(keys.value.feature)));
+const timedFeatures=['remove_subtitle','remove_watermark','remove_subtitle_fullscreen','remove_watermark_fullscreen','extract_text_upload'];
+const FULLSCREEN_BILLING: Record<string,string> = {
+ remove_watermark:'remove_watermark_fullscreen',
+ remove_subtitle:'remove_subtitle_fullscreen',
+};
+const fullscreenFeatures = new Set(Object.values(FULLSCREEN_BILLING));
+const secondsAllowed = computed(() => timedFeatures.includes(String(keys.value.feature)));
 const allowedUnits = computed(() => {
  const feature = String(keys.value.feature);
  if (feature === 'tts') return ['count', 'characters'];
@@ -66,6 +72,7 @@ const tableSections = computed(() => {
  groups.set('其他功能', []);
  for (const row of matches.value) {
   const feature = String(row.feature);
+  if (fullscreenFeatures.has(feature)) continue;
   const label = billingSections.find(section => section.features.includes(feature))?.label
     ?? (feature.startsWith('video_notes_') ? '视频笔记' : '其他功能');
   groups.get(label)!.push(row);
@@ -85,9 +92,16 @@ function display(row:Row,key:string) {
  if(key==='created') return value?new Date(Number(value)*1000).toLocaleString('zh-CN',{hour12:false}):'—';
  if(key==='code' && resource.value==='point-rewards') return value==='new_user'?'新人注册奖励':value==='signin'?'签到奖励':value==='ad'?'激励广告奖励':value;
  if(key==='feature') return featureLabel(value,row.name||features.value.find(item=>item.feature===value)?.name);
+ if(resource.value==='feature-billing'&&key==='points') {
+  const fullscreen = FULLSCREEN_BILLING[String(row.feature)];
+  if(fullscreen) {
+   const extra = rows.value.find(item=>item.feature===fullscreen);
+   return `框选 ${value} / 全屏 ${extra?.points ?? '—'}`;
+  }
+ }
  if(key==='plan_code') return plans.value.find(item=>item.code===value)?.name || value;
  if(key==='daily_count' && row.unlimited===1) return '不限次数';
- if(['single_seconds','daily_seconds'].includes(key) && !['remove_subtitle','remove_watermark','extract_text_upload'].includes(String(row.feature)))return '不适用';
+ if(['single_seconds','daily_seconds'].includes(key) && !timedFeatures.includes(String(row.feature)))return '不适用';
  if(['single_seconds','daily_seconds'].includes(key)) return Number(value)===0?'不限':`${value} 秒`;
  return value;
 }
@@ -118,7 +132,16 @@ async function load() {
 }
 function edit(row:Row) {
  creating.value=false;keys.value=rowKeys(row);
- form.value=Object.fromEntries(Object.entries(row).filter(([key])=>!Object.keys(keys.value).includes(key) && columns.value.includes(key)));
+ const ordered = columns.value.filter(key=>key!=='fullscreen_points' && !Object.keys(keys.value).includes(key));
+ const pointsIndex = ordered.indexOf('points');
+ if(FULLSCREEN_BILLING[String(row.feature)]) ordered.splice(pointsIndex+1,0,'fullscreen_points');
+ form.value=Object.fromEntries(ordered.map(key=>{
+  if(key==='fullscreen_points') {
+   const extra = rows.value.find(item=>item.feature===FULLSCREEN_BILLING[String(row.feature)]);
+   return [key,Number(extra?.points ?? 0)];
+  }
+  return [key,row[key]!];
+ }));
  editing.value=true;
 }
 function add() {
@@ -128,7 +151,11 @@ function add() {
 async function save() {
  if(creating.value && Object.values(keys.value).some(v=>!String(v).trim())){ElMessage.warning('请填写或选择完整标识');return;}
  saving.value=true;
- try{await requestClient[creating.value?'post':'put'](`/configs/${resource.value}`,{keys:keys.value,values:form.value});editing.value=false;ElMessage.success('配置已保存');await load();}finally{saving.value=false;}
+ try{
+  const values={...form.value};
+  Object.keys(keys.value).forEach(key=>delete values[key]);
+  await requestClient[creating.value?'post':'put'](`/configs/${resource.value}`,{keys:keys.value,values});
+  editing.value=false;ElMessage.success('配置已保存');await load();}finally{saving.value=false;}
 }
 watch(()=>keys.value.feature,()=>{if(!secondsAllowed.value && resource.value==='membership-entitlements'){form.value.single_seconds=0;form.value.daily_seconds=0;}});
 watch([keyword,enabledFilter],()=>{page.value=1;});
@@ -151,7 +178,7 @@ watch(resource,()=>{packageOrderOpen.value=false;entitlementOpen.value=false;pag
    <template v-for="section in tableSections" :key="section.label">
    <h3 v-if="section.label" class="mb-2 mt-5 font-semibold">{{section.label}}</h3>
    <ElTable v-loading="busy" :data="section.rows" stripe border empty-text="暂无符合条件的记录">
-    <ElTableColumn v-for="key in columns" :key="key" :prop="key" :label="fields[key] || key" :min-width="key==='admin_id'?260:140" show-overflow-tooltip>
+    <ElTableColumn v-for="key in columns" :key="key" :prop="key" :label="fields[key] || key" :min-width="key==='admin_id'?260:key==='points'?210:140" show-overflow-tooltip>
      <template #default="scope">
       <ElSwitch v-if="isSwitch(key)" :model-value="Number(scope.row[key])" :active-value="1" :inactive-value="0" :active-text="key==='unlimited'?'不限':'启用'" :inactive-text="key==='unlimited'?'有限':'禁用'" inline-prompt :aria-label="fields[key]" :disabled="!canEdit" :loading="switching.has(switchKey(scope.row,key))" :before-change="()=>toggle(scope.row,key)"/>
       <ElTag v-else-if="resource==='feature-billing'&&['unit','unit_size','points'].includes(key)" class="billing-highlight" :type="key==='points'?'success':key==='unit_size'?'warning':'primary'" effect="light">{{display(scope.row,key)}}</ElTag>
@@ -174,18 +201,28 @@ watch(resource,()=>{packageOrderOpen.value=false;entitlementOpen.value=false;pag
      <ElSelect v-else-if="key==='feature'" :model-value="String(value)" :disabled="!creating" filterable placeholder="选择功能" @update:model-value="v=>keys[key]=v"><ElOption v-for="feature in features" :key="feature.feature" :value="String(feature.feature)" :label="featureLabel(feature.feature,feature.name)"/></ElSelect>
      <ElInput v-else :model-value="String(value)" :disabled="!creating" placeholder="小写英文、数字、横线或下划线" maxlength="32" @update:model-value="v=>keys[key]=v"/>
     </ElFormItem>
-    <ElFormItem v-for="(value,key) in form" :key="key" :label="fields[key] || key">
-     <ElSwitch v-if="isSwitch(key)" :model-value="Number(value)" :active-value="1" :inactive-value="0" :active-text="key==='unlimited'?'不限次数':'启用'" :inactive-text="key==='unlimited'?'有限次数':'禁用'" :aria-label="fields[key]" @update:model-value="v=>form[key]=Number(v)"/>
-     <ElInputNumber v-else-if="key==='price_fen'" :model-value="Number(value)/100" :min="0" :max="10000000" :precision="2" @update:model-value="v=>form[key]=Math.round((v||0)*100)"/>
-     <ElInput v-else-if="key==='wx_product_id'" :model-value="String(value)" maxlength="128" placeholder="微信对应环境道具 ID，留空禁止在线支付" @update:model-value="v=>form[key]=v"/>
-     <ElInputNumber v-else-if="typeof value==='number'" :model-value="Number(value)" :min="key==='unit_size'?1:0" :max="1000000000" :precision="0" :disabled="(key==='daily_count' && Number(form.unlimited)===1) || (['single_seconds','daily_seconds'].includes(key) && !secondsAllowed)" @update:model-value="v=>form[key]=v||0"/>
-     <ElSelect v-else-if="key==='unit'" :model-value="String(value)" @update:model-value="v=>form[key]=v"><ElOption v-for="unit in allowedUnits" :key="unit" :label="unitLabels[unit]" :value="unit"/></ElSelect>
-     <ElInput v-else :model-value="String(value)" maxlength="100" @update:model-value="v=>form[key]=v"/>
-     <div v-if="key==='daily_count'" class="w-full text-xs text-gray-500">有限次数时，0 表示没有免费次数；打开“不限次数”后不使用此值。</div>
-     <div v-if="key==='wx_product_id'" class="w-full text-xs text-gray-500">道具 ID 与价格须和微信对应环境配置一致；留空禁止在线支付。此字段与英文标识独立，不修改原套餐标识。</div>
-     <div v-if="key==='price_fen'" class="w-full text-xs text-gray-500">输入单位为元，保存为整数分：1.99 元保存为 199 分，支付不再换算。</div>
-     <div v-if="['single_seconds','daily_seconds'].includes(key)" class="w-full text-xs text-gray-500">0 表示不限时长，上传视频去水印、去字幕和文案提取支持时长权益。</div>
-    </ElFormItem>
+    <template v-for="(value,key) in form" :key="key">
+     <div v-if="key==='points' && form.fullscreen_points!==undefined" class="points-row">
+      <ElFormItem label="框选积分" class="points-field points-field--region">
+       <ElInputNumber :model-value="Number(value)" :min="0" :max="1000000000" :precision="0" @update:model-value="v=>form[key]=v||0"/>
+      </ElFormItem>
+      <ElFormItem label="全屏积分" class="points-field points-field--fullscreen">
+       <ElInputNumber :model-value="Number(form.fullscreen_points)" :min="0" :max="1000000000" :precision="0" @update:model-value="v=>form.fullscreen_points=v||0"/>
+      </ElFormItem>
+     </div>
+     <ElFormItem v-else-if="key!=='fullscreen_points'" :label="fields[key] || key">
+      <ElSwitch v-if="isSwitch(key)" :model-value="Number(value)" :active-value="1" :inactive-value="0" :active-text="key==='unlimited'?'不限次数':'启用'" :inactive-text="key==='unlimited'?'有限次数':'禁用'" :aria-label="fields[key]" @update:model-value="v=>form[key]=Number(v)"/>
+      <ElInputNumber v-else-if="key==='price_fen'" :model-value="Number(value)/100" :min="0" :max="10000000" :precision="2" @update:model-value="v=>form[key]=Math.round((v||0)*100)"/>
+      <ElInput v-else-if="key==='wx_product_id'" :model-value="String(value)" maxlength="128" placeholder="微信对应环境道具 ID，留空禁止在线支付" @update:model-value="v=>form[key]=v"/>
+      <ElInputNumber v-else-if="typeof value==='number'" :model-value="Number(value)" :min="key==='unit_size'?1:0" :max="1000000000" :precision="0" :disabled="(key==='daily_count' && Number(form.unlimited)===1) || (['single_seconds','daily_seconds'].includes(key) && !secondsAllowed)" @update:model-value="v=>form[key]=v||0"/>
+      <ElSelect v-else-if="key==='unit'" :model-value="String(value)" @update:model-value="v=>form[key]=v"><ElOption v-for="unit in allowedUnits" :key="unit" :label="unitLabels[unit]" :value="unit"/></ElSelect>
+      <ElInput v-else :model-value="String(value)" maxlength="100" @update:model-value="v=>form[key]=v"/>
+      <div v-if="key==='daily_count'" class="w-full text-xs text-gray-500">有限次数时，0 表示没有免费次数；打开“不限次数”后不使用此值。</div>
+      <div v-if="key==='wx_product_id'" class="w-full text-xs text-gray-500">道具 ID 与价格须和微信对应环境配置一致；留空禁止在线支付。此字段与英文标识独立，不修改原套餐标识。</div>
+      <div v-if="key==='price_fen'" class="w-full text-xs text-gray-500">输入单位为元，保存为整数分：1.99 元保存为 199 分，支付不再换算。</div>
+      <div v-if="['single_seconds','daily_seconds'].includes(key)" class="w-full text-xs text-gray-500">0 表示不限时长，上传视频去水印、去字幕和文案提取支持时长权益。</div>
+     </ElFormItem>
+    </template>
    </ElForm>
    <template #footer><ElButton :disabled="saving" @click="editing=false">取消</ElButton><ElButton type="primary" :loading="saving" @click="save">保存</ElButton></template>
   </ElDialog>
@@ -195,4 +232,9 @@ watch(resource,()=>{packageOrderOpen.value=false;entitlementOpen.value=false;pag
 
 <style scoped>
 .billing-highlight { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
+.points-row { display:flex; gap:14px; padding:6px 12px 0; margin-bottom:6px; border:1px solid #d9e7ff; border-radius:8px; background:#f5f8ff; }
+.points-field { flex:1; min-width:0; }
+.points-field :deep(.el-input-number) { width:100%; }
+.points-field--region :deep(.el-form-item__label) { color:#0f8b65; }
+.points-field--fullscreen :deep(.el-form-item__label) { color:#7b3fe4; }
 </style>
